@@ -1,0 +1,7 @@
+with-expecter: true
+all: true
+dir: "internal/service"
+output: "internal/service/mocks"
+outpkg: mocks
+case: underscore
+
