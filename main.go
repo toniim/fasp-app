@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -234,6 +235,16 @@ func (a *App) CaptureFullscreen() (*model.CaptureResult, error) {
 
 // CaptureActiveDisplay captures the active display
 func (a *App) CaptureActiveDisplay() (*model.CaptureResult, error) {
+	// Check Screen Recording permission first
+	hasPermission, err := a.permissionService.CheckScreenRecording()
+	if err != nil {
+		return nil, fmt.Errorf("failed to check screen recording permission: %w", err)
+	}
+
+	if !hasPermission {
+		return nil, fmt.Errorf("screen recording permission is required. Please grant permission in System Settings > Privacy & Security > Screen Recording")
+	}
+
 	return a.captureService.CaptureActiveDisplay()
 }
 

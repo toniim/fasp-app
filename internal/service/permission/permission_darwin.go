@@ -20,96 +20,30 @@ void requestAccessibilityPermission() {
 }
 
 bool checkScreenRecordingPermission() {
-    // Check screen recording permission by getting window list
-    // Without permission, we get limited/no window info
-    // With permission, we can see all windows with full details
-
-    CFArrayRef windowList = CGWindowListCopyWindowInfo(
-        kCGWindowListOptionAll | kCGWindowListExcludeDesktopElements,
-        kCGNullWindowID
-    );
-
-    if (windowList == NULL) {
-        printf("[DEBUG C] Failed to get window list - NO PERMISSION\n");
-        return false;
-    }
-
-    CFIndex count = CFArrayGetCount(windowList);
-    printf("[DEBUG C] Total windows visible: %ld\n", count);
-
-    // Count windows from other apps (not our own)
-    int otherAppWindows = 0;
-    int ourAppWindows = 0;
-    int windowsWithoutOwner = 0;
-
-    // Print first 10 windows for debugging
-    printf("[DEBUG C] First 10 windows:\n");
-
-    for (CFIndex i = 0; i < count; i++) {
-        CFDictionaryRef window = (CFDictionaryRef)CFArrayGetValueAtIndex(windowList, i);
-
-        // Get window owner name
-        CFStringRef ownerName = (CFStringRef)CFDictionaryGetValue(window, kCGWindowOwnerName);
-        if (ownerName != NULL) {
-            char ownerNameStr[256];
-            if (CFStringGetCString(ownerName, ownerNameStr, sizeof(ownerNameStr), kCFStringEncodingUTF8)) {
-                // Print first 10 for debugging
-                if (i < 10) {
-                    printf("[DEBUG C]   Window %ld: %s\n", i, ownerNameStr);
-                }
-
-                // Check if it's our own app or dev environment
-                bool isOurApp = (strcmp(ownerNameStr, "grabix") == 0 ||
-                                strcmp(ownerNameStr, "Grabix") == 0 ||
-                                strcmp(ownerNameStr, "Terminal") == 0 ||
-                                strcmp(ownerNameStr, "Code") == 0 ||
-                                strcmp(ownerNameStr, "Visual Studio Code") == 0 ||
-                                strcmp(ownerNameStr, "Cursor") == 0 ||
-                                strcmp(ownerNameStr, "iTerm2") == 0 ||
-                                strcmp(ownerNameStr, "iTerm") == 0);
-
-                if (isOurApp) {
-                    ourAppWindows++;
-                } else {
-                    otherAppWindows++;
-                }
-            }
-        } else {
-            windowsWithoutOwner++;
-            if (i < 10) {
-                printf("[DEBUG C]   Window %ld: (no owner)\n", i);
-            }
-        }
-    }
-
-    CFRelease(windowList);
-
-    printf("[DEBUG C] Summary:\n");
-    printf("[DEBUG C]   Total windows: %ld\n", count);
-    printf("[DEBUG C]   Our app windows: %d\n", ourAppWindows);
-    printf("[DEBUG C]   Other app windows: %d\n", otherAppWindows);
-    printf("[DEBUG C]   Windows without owner: %d\n", windowsWithoutOwner);
-
-    // Permission check logic:
-    // Key indicator: Can we see windows from OTHER apps?
-    // Without permission: we can only see our own windows (or very limited list)
-    // With permission: we can see windows from Finder, Safari, Chrome, etc.
+    // Check Screen Recording permission using CGPreflightScreenCaptureAccess
+    // This is the recommended way on macOS 10.15+
     //
-    // Even if user has minimal apps open, they should have at least:
-    // - Finder (always running)
-    // - WindowServer, Dock (system)
-    // So if otherAppWindows == 0, we likely don't have permission
-    bool hasPermission = (otherAppWindows > 0);
+    // Returns:
+    // - true: permission granted
+    // - false: permission denied or not determined
+
+    printf("[DEBUG C] Checking Screen Recording permission...\n");
+
+    // CGPreflightScreenCaptureAccess checks without prompting
+
+    bool hasPermission = false;
+	if (@available(macOS 10.15, *)) {
+        hasPermission = CGPreflightScreenCaptureAccess();
+    }
 
     printf("[DEBUG C] Screen Recording Permission: %s\n",
            hasPermission ? "✅ GRANTED" : "❌ DENIED");
-    printf("[DEBUG C] Reason: %s\n",
-           hasPermission ? "Can see windows from other apps" : "Can only see our own windows");
+
 
     return hasPermission;
 }
 
-void requestScreenRecordingPermission() {
+void openScreenRecordingSettings() {
     // Open System Settings to Screen Recording page
     // This is the most reliable way to guide users
     CFStringRef urlString = CFStringCreateWithCString(NULL,
@@ -124,6 +58,22 @@ void requestScreenRecordingPermission() {
         }
         CFRelease(urlString);
     }
+}
+
+bool requestScreenRecordingPermission(void) {
+    if (@available(macOS 10.15, *)) {
+        // This triggers registration + may prompt / guide; returns current result
+        bool granted = CGRequestScreenCaptureAccess();
+
+        // Even if it returns false, user might need manual toggle in Settings
+        if (!granted) {
+            openScreenRecordingSettings();
+        }
+        return granted;
+    }
+
+    // On < 10.15: no Screen Recording permission model like this
+    return true;
 }
 */
 import "C"
