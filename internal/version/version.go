@@ -6,13 +6,13 @@ import (
 )
 
 var (
-	// Version follows format: vYYYY.MM.PATCH
-	// Example: v2025.12.0
-	Version = "v2025.12.0"
-	
+	// Version follows format: vYY.M.PATCH
+	// Example: v26.1.0 (year 2026, month 1, patch 0)
+	Version = "v26.1.0"
+
 	// BuildTime is set during build
 	BuildTime = ""
-	
+
 	// GitCommit is set during build
 	GitCommit = ""
 )
@@ -30,7 +30,7 @@ func Get() Info {
 	if buildTime == "" {
 		buildTime = time.Now().Format("2006-01-02 15:04:05")
 	}
-	
+
 	return Info{
 		Version:   Version,
 		BuildTime: buildTime,
@@ -50,4 +50,3 @@ func (i Info) String() string {
 func (i Info) Short() string {
 	return i.Version
 }
-

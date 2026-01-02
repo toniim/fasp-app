@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Arrow, Text, Transformer, Line, Circle, Group } from 'react-konva';
-import Konva from 'konva';
 import { useEditorStore } from '../../store/editorStore';
 import { Annotation } from '../../types';
 import Toolbar from './Toolbar';
@@ -31,8 +30,10 @@ const EditorWindow: React.FC = () => {
   } = useEditorStore();
 
   const [konvaImage, setKonvaImage] = useState<HTMLImageElement | null>(null);
+  const [blurPatternImage, setBlurPatternImage] = useState<HTMLImageElement | null>(null);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [scaleRatio, setScaleRatio] = useState(1);
+  const [previousScaleRatio, setPreviousScaleRatio] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -76,6 +77,38 @@ const EditorWindow: React.FC = () => {
     };
   }, [image]);
 
+  // Create blur pattern image using canvas (simple diagonal stripes)
+  useEffect(() => {
+    // Create a small canvas for the pattern
+    const canvas = document.createElement('canvas');
+    canvas.width = 20;
+    canvas.height = 20;
+    const ctx = canvas.getContext('2d');
+
+    if (ctx) {
+      // Fill with dark gray background
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(0, 0, 20, 20);
+
+      // Draw diagonal stripes
+      ctx.strokeStyle = '#2a2a2a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(20, 20);
+      ctx.moveTo(0, 20);
+      ctx.lineTo(20, 0);
+      ctx.stroke();
+
+      // Convert canvas to image
+      const img = new window.Image();
+      img.src = canvas.toDataURL();
+      img.onload = () => {
+        setBlurPatternImage(img);
+      };
+    }
+  }, []);
+
   // Handle window resize
   useEffect(() => {
     if (!konvaImage) return;
@@ -84,13 +117,47 @@ const EditorWindow: React.FC = () => {
       // Recalculate stage size to fit new window dimensions
       const maxWidth = window.innerWidth - 40;
       const maxHeight = window.innerHeight - 140;
-      const scale = Math.min(maxWidth / konvaImage.width, maxHeight / konvaImage.height, 1);
+      const newScale = Math.min(maxWidth / konvaImage.width, maxHeight / konvaImage.height, 1);
+
+      // Calculate scale factor for annotations
+      const scaleFactor = newScale / scaleRatio;
+
+      // Scale all existing annotations
+      if (scaleFactor !== 1 && annotations.length > 0) {
+        annotations.forEach(ann => {
+          const updates: Partial<Annotation> = {};
+
+          // Scale position
+          if (ann.x !== undefined) updates.x = ann.x * scaleFactor;
+          if (ann.y !== undefined) updates.y = ann.y * scaleFactor;
+
+          // Scale dimensions
+          if (ann.width !== undefined) updates.width = ann.width * scaleFactor;
+          if (ann.height !== undefined) updates.height = ann.height * scaleFactor;
+
+          // Scale stroke width
+          if (ann.strokeWidth !== undefined) updates.strokeWidth = ann.strokeWidth * scaleFactor;
+
+          // Scale points (for arrows, lines)
+          if (ann.points) {
+            updates.points = ann.points.map(p => p * scaleFactor);
+          }
+
+          // Scale font size (for text)
+          if (ann.fontSize) {
+            updates.fontSize = ann.fontSize * scaleFactor;
+          }
+
+          updateAnnotation(ann.id, updates);
+        });
+      }
 
       setStageSize({
-        width: konvaImage.width * scale,
-        height: konvaImage.height * scale,
+        width: konvaImage.width * newScale,
+        height: konvaImage.height * newScale,
       });
-      setScaleRatio(scale);
+      setPreviousScaleRatio(scaleRatio);
+      setScaleRatio(newScale);
 
       // Reset zoom and pan when resizing
       setZoom(1);
@@ -102,7 +169,7 @@ const EditorWindow: React.FC = () => {
     return () => {
       window.removeEventListener('resize', handleResize);
     };
-  }, [konvaImage]);
+  }, [konvaImage, scaleRatio, annotations, updateAnnotation]);
 
   // Handle Cmd/Ctrl + Scroll to zoom
   useEffect(() => {
@@ -167,6 +234,8 @@ const EditorWindow: React.FC = () => {
       transformerRef.current.getLayer()?.batchDraw();
     }
   }, [selectedAnnotationId, annotations]);
+
+
 
   // Update cursor when zoom or tool changes
   useEffect(() => {
@@ -744,7 +813,7 @@ const EditorWindow: React.FC = () => {
     if (!ann) return;
 
     // Update annotation with new dimensions
-    if (ann.type === 'rectangle' || ann.type === 'highlight') {
+    if (ann.type === 'rectangle' || ann.type === 'highlight' || ann.type === 'blur') {
       updateAnnotation(annId, {
         x: node.x(),
         y: node.y(),
@@ -807,25 +876,24 @@ const EditorWindow: React.FC = () => {
           />
         );
       case 'blur':
+        // Use textured pattern to redact/hide sensitive information
+        // Diagonal stripes pattern - softer look than solid black
         return (
           <Rect
-            key={ann.id}
+            key={`${ann.id}-${blurPatternImage ? 'pattern' : 'solid'}`}
             ref={(node) => {
               if (node) {
                 shapeRefs.current[ann.id] = node;
-                // Apply blur filter
-                node.cache();
-                node.filters([Konva.Filters.Blur]);
-                node.blurRadius(20);
               }
             }}
             x={ann.x}
             y={ann.y}
             width={ann.width}
             height={ann.height}
-            fillPatternImage={konvaImage || undefined}
-            fillPatternX={-ann.x}
-            fillPatternY={-ann.y}
+            fillPatternImage={blurPatternImage || undefined}
+            fillPatternRepeat="repeat"
+            fill={blurPatternImage ? undefined : '#000000'}
+            opacity={0.95}
             stroke={isSelected ? '#007bff' : undefined}
             strokeWidth={isSelected ? 2 : 0}
             draggable={isDraggable}
