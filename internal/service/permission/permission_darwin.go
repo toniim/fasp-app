@@ -21,8 +21,8 @@ void requestAccessibilityPermission() {
 
 bool checkScreenRecordingPermission() {
     // Check screen recording permission by getting window list
-    // Without permission, we can only see our own windows
-    // With permission, we can see all windows
+    // Without permission, we get limited/no window info
+    // With permission, we can see all windows with full details
 
     CFArrayRef windowList = CGWindowListCopyWindowInfo(
         kCGWindowListOptionAll | kCGWindowListExcludeDesktopElements,
@@ -30,41 +30,83 @@ bool checkScreenRecordingPermission() {
     );
 
     if (windowList == NULL) {
+        printf("[DEBUG C] Failed to get window list - NO PERMISSION\n");
         return false;
     }
 
     CFIndex count = CFArrayGetCount(windowList);
+    printf("[DEBUG C] Total windows visible: %ld\n", count);
 
     // Count windows from other apps (not our own)
     int otherAppWindows = 0;
+    int ourAppWindows = 0;
+    int windowsWithoutOwner = 0;
+
+    // Print first 10 windows for debugging
+    printf("[DEBUG C] First 10 windows:\n");
+
     for (CFIndex i = 0; i < count; i++) {
         CFDictionaryRef window = (CFDictionaryRef)CFArrayGetValueAtIndex(windowList, i);
 
         // Get window owner name
         CFStringRef ownerName = (CFStringRef)CFDictionaryGetValue(window, kCGWindowOwnerName);
         if (ownerName != NULL) {
-            // Check if it's not our app (grabix or Terminal/IDE in dev mode)
             char ownerNameStr[256];
             if (CFStringGetCString(ownerName, ownerNameStr, sizeof(ownerNameStr), kCFStringEncodingUTF8)) {
-                // If we can see windows from other apps, we have permission
-                if (strcmp(ownerNameStr, "grabix") != 0 &&
-                    strcmp(ownerNameStr, "Terminal") != 0 &&
-                    strcmp(ownerNameStr, "Code") != 0 &&
-                    strcmp(ownerNameStr, "Visual Studio Code") != 0) {
+                // Print first 10 for debugging
+                if (i < 10) {
+                    printf("[DEBUG C]   Window %ld: %s\n", i, ownerNameStr);
+                }
+
+                // Check if it's our own app or dev environment
+                bool isOurApp = (strcmp(ownerNameStr, "grabix") == 0 ||
+                                strcmp(ownerNameStr, "Grabix") == 0 ||
+                                strcmp(ownerNameStr, "Terminal") == 0 ||
+                                strcmp(ownerNameStr, "Code") == 0 ||
+                                strcmp(ownerNameStr, "Visual Studio Code") == 0 ||
+                                strcmp(ownerNameStr, "Cursor") == 0 ||
+                                strcmp(ownerNameStr, "iTerm2") == 0 ||
+                                strcmp(ownerNameStr, "iTerm") == 0);
+
+                if (isOurApp) {
+                    ourAppWindows++;
+                } else {
                     otherAppWindows++;
                 }
+            }
+        } else {
+            windowsWithoutOwner++;
+            if (i < 10) {
+                printf("[DEBUG C]   Window %ld: (no owner)\n", i);
             }
         }
     }
 
     CFRelease(windowList);
 
-    // Debug logging
-    printf("[DEBUG C] Total windows: %ld, Other app windows: %d\n", count, otherAppWindows);
+    printf("[DEBUG C] Summary:\n");
+    printf("[DEBUG C]   Total windows: %ld\n", count);
+    printf("[DEBUG C]   Our app windows: %d\n", ourAppWindows);
+    printf("[DEBUG C]   Other app windows: %d\n", otherAppWindows);
+    printf("[DEBUG C]   Windows without owner: %d\n", windowsWithoutOwner);
 
-    // If we can see windows from other apps, we have permission
-    // Typically need to see at least a few windows (Finder, Dock, etc.)
-    return otherAppWindows > 3;
+    // Permission check logic:
+    // Key indicator: Can we see windows from OTHER apps?
+    // Without permission: we can only see our own windows (or very limited list)
+    // With permission: we can see windows from Finder, Safari, Chrome, etc.
+    //
+    // Even if user has minimal apps open, they should have at least:
+    // - Finder (always running)
+    // - WindowServer, Dock (system)
+    // So if otherAppWindows == 0, we likely don't have permission
+    bool hasPermission = (otherAppWindows > 0);
+
+    printf("[DEBUG C] Screen Recording Permission: %s\n",
+           hasPermission ? "✅ GRANTED" : "❌ DENIED");
+    printf("[DEBUG C] Reason: %s\n",
+           hasPermission ? "Can see windows from other apps" : "Can only see our own windows");
+
+    return hasPermission;
 }
 
 void requestScreenRecordingPermission() {
@@ -95,25 +137,30 @@ func New() Service {
 
 // CheckAccessibility checks if the app has Accessibility permissions
 func (s *serviceImpl) CheckAccessibility() (bool, error) {
+	println("[DEBUG Go] Checking Accessibility permission...")
 	result := bool(C.checkAccessibilityPermission())
+	println("[DEBUG Go] Accessibility permission:", result)
 	return result, nil
 }
 
 // RequestAccessibility requests Accessibility permissions (opens System Settings)
 func (s *serviceImpl) RequestAccessibility() error {
+	println("[INFO Go] Requesting Accessibility permission (opening System Settings)...")
 	C.requestAccessibilityPermission()
 	return nil
 }
 
 // CheckScreenRecording checks if the app has Screen Recording permissions
 func (s *serviceImpl) CheckScreenRecording() (bool, error) {
+	println("[DEBUG Go] Checking Screen Recording permission...")
 	result := bool(C.checkScreenRecordingPermission())
-	println("[DEBUG] CheckScreenRecording result:", result)
+	println("[DEBUG Go] Screen Recording permission:", result)
 	return result, nil
 }
 
 // RequestScreenRecording requests Screen Recording permissions (opens System Settings)
 func (s *serviceImpl) RequestScreenRecording() error {
+	println("[INFO Go] Requesting Screen Recording permission (opening System Settings)...")
 	C.requestScreenRecordingPermission()
 	return nil
 }

@@ -27,27 +27,40 @@ function PermissionWarning({ onClose }: PermissionWarningProps) {
 
       console.log('[PermissionWarning] Checking permissions...');
 
+      // Add small delay to let macOS settle (especially on first launch)
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       // Check Screen Recording first (more critical for screenshot app)
       const hasScreenRecording = await CheckScreenRecordingPermission();
       console.log('[PermissionWarning] Screen Recording permission:', hasScreenRecording);
 
       if (!hasScreenRecording) {
         console.log('[PermissionWarning] Missing Screen Recording permission');
-        setMissingPermission('screen-recording');
-        return;
+
+        // Retry once after 1 second (in case of timing issue)
+        console.log('[PermissionWarning] Retrying permission check in 1s...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const hasScreenRecordingRetry = await CheckScreenRecordingPermission();
+        console.log('[PermissionWarning] Screen Recording permission (retry):', hasScreenRecordingRetry);
+
+        if (!hasScreenRecordingRetry) {
+          setMissingPermission('screen-recording');
+          return;
+        }
       }
 
-      // Then check Accessibility (for hotkeys)
+      // Then check Accessibility (for hotkeys) - OPTIONAL
       const hasAccessibility = await CheckAccessibilityPermission();
       console.log('[PermissionWarning] Accessibility permission:', hasAccessibility);
 
       if (!hasAccessibility) {
-        console.log('[PermissionWarning] Missing Accessibility permission');
-        setMissingPermission('accessibility');
-        return;
+        console.log('[PermissionWarning] Missing Accessibility permission (optional - for hotkeys)');
+        // Don't block app, just log warning
+        // User can still use app without hotkeys
       }
 
-      console.log('[PermissionWarning] All permissions granted');
+      console.log('[PermissionWarning] All critical permissions granted');
       setMissingPermission(null);
     } catch (error) {
       console.error('Failed to check permissions:', error);
@@ -110,6 +123,9 @@ function PermissionWarning({ onClose }: PermissionWarningProps) {
           </button>
           <button className="btn-secondary" onClick={checkPermissions}>
             I've Granted Permission
+          </button>
+          <button className="btn-secondary" onClick={() => setMissingPermission(null)}>
+            Skip (I'll Fix Later)
           </button>
           {onClose && (
             <button className="btn-text" onClick={onClose}>
