@@ -20,6 +20,13 @@ build: ## Build production binary
 build-darwin: ## Build for macOS
 	@wails build -platform darwin/arm64
 
+build-darwin-signed: ## Build for macOS with code signing (preserves screen recording permission)
+	@wails build -platform darwin/arm64
+	@./scripts/sign-macos.sh
+
+sign: ## Sign macOS app (run after build to preserve permissions)
+	@./scripts/sign-macos.sh
+
 build-windows: ## Build for Windows
 	@wails build -platform windows/amd64
 
