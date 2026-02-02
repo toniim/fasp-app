@@ -186,13 +186,16 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
           <div className="settings-table">
             <div className="setting-row">
               <label className="setting-label">Run at Startup</label>
-              <div className="setting-input">
+              <div className="setting-input-checkbox">
                 <input
                   type="checkbox"
+                  id="run-at-startup"
                   checked={settings.run_at_startup || false}
                   onChange={(e) => setSettings({ ...settings, run_at_startup: e.target.checked })}
                 />
-                <p className="setting-hint">Automatically start Grabix when you log in</p>
+                <label htmlFor="run-at-startup" className="checkbox-label">
+                  Start when login
+                </label>
               </div>
             </div>
           </div>

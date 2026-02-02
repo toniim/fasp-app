@@ -37,6 +37,7 @@ const EditorWindow: React.FC = () => {
   const [zoom, setZoom] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  const [isModifierPressed, setIsModifierPressed] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentAnnotation, setCurrentAnnotation] = useState<Annotation | null>(null);
   const [textInput, setTextInput] = useState<{ x: number; y: number; fontSize?: number; annotationId?: string } | null>(null);
@@ -65,7 +66,7 @@ const EditorWindow: React.FC = () => {
     img.src = `data:image/png;base64,${image}`;
     img.onload = () => {
       setKonvaImage(img);
-      // Fit image to window - use more space
+      // Fit image to window
       const maxWidth = window.innerWidth - 40;
       const maxHeight = window.innerHeight - 140;
       const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
@@ -74,6 +75,9 @@ const EditorWindow: React.FC = () => {
         height: img.height * scale,
       });
       setScaleRatio(scale);
+      // Reset zoom/pan after crop
+      setZoom(1);
+      setStagePos({ x: 0, y: 0 });
     };
   }, [image]);
 
@@ -171,17 +175,16 @@ const EditorWindow: React.FC = () => {
     };
   }, [konvaImage, scaleRatio, annotations, updateAnnotation]);
 
-  // Handle Cmd/Ctrl + Scroll to zoom
+  // Handle scroll: Cmd/Ctrl + Scroll to zoom, regular scroll to pan when zoomed
   useEffect(() => {
     const handleWheel = (e: Event) => {
       const wheelEvent = e as WheelEvent;
+      const stage = stageRef.current;
+      if (!stage) return;
 
-      // Check if Cmd (Mac) or Ctrl (Windows/Linux) is pressed
+      // Check if Cmd (Mac) or Ctrl (Windows/Linux) is pressed for zoom
       if (wheelEvent.metaKey || wheelEvent.ctrlKey) {
         wheelEvent.preventDefault();
-
-        const stage = stageRef.current;
-        if (!stage) return;
 
         const oldZoom = zoom;
         const pointer = stage.getPointerPosition();
@@ -194,6 +197,15 @@ const EditorWindow: React.FC = () => {
         const newZoom = direction > 0
           ? Math.min(oldZoom * scaleBy, 3)
           : Math.max(oldZoom / scaleBy, 0.5);
+
+        // When zoom <= 1, center the image
+        if (newZoom <= 1) {
+          setZoom(newZoom);
+          setStagePos({ x: 0, y: 0 });
+          stage.position({ x: 0, y: 0 });
+          stage.batchDraw();
+          return;
+        }
 
         // Calculate new position to zoom towards mouse pointer
         const mousePointTo = {
@@ -208,6 +220,18 @@ const EditorWindow: React.FC = () => {
 
         setZoom(newZoom);
         setStagePos(newPos);
+      } else if (zoom > 1) {
+        // Regular scroll to pan when zoomed in
+        wheelEvent.preventDefault();
+
+        const newPos = {
+          x: stagePos.x - wheelEvent.deltaX,
+          y: stagePos.y - wheelEvent.deltaY,
+        };
+
+        setStagePos(newPos);
+        stage.position(newPos);
+        stage.batchDraw();
       }
     };
 
@@ -220,6 +244,17 @@ const EditorWindow: React.FC = () => {
       };
     }
   }, [zoom, stagePos]);
+
+  // Center image when zoom <= 1 (from ZoomBar or any source)
+  useEffect(() => {
+    if (zoom <= 1 && (stagePos.x !== 0 || stagePos.y !== 0)) {
+      setStagePos({ x: 0, y: 0 });
+      if (stageRef.current) {
+        stageRef.current.position({ x: 0, y: 0 });
+        stageRef.current.batchDraw();
+      }
+    }
+  }, [zoom]);
 
   // Attach transformer to selected annotation
   useEffect(() => {
@@ -237,13 +272,40 @@ const EditorWindow: React.FC = () => {
 
 
 
-  // Update cursor when zoom or tool changes
+  // Track Cmd/Ctrl key for panning on any tool
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey) {
+        setIsModifierPressed(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!e.metaKey && !e.ctrlKey) {
+        setIsModifierPressed(false);
+      }
+    };
+    // Also reset when window loses focus
+    const handleBlur = () => setIsModifierPressed(false);
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
+
+  // Update cursor when zoom, tool, or modifier changes
   useEffect(() => {
     if (stageRef.current) {
       const container = stageRef.current.container();
 
-      // Crop tool always shows crosshair
-      if (selectedTool === 'crop') {
+      if (isModifierPressed) {
+        container.style.cursor = 'grab';
+      } else if (selectedTool === 'crop') {
         container.style.cursor = 'crosshair';
       } else if (zoom > 1) {
         container.style.cursor = 'grab';
@@ -251,7 +313,7 @@ const EditorWindow: React.FC = () => {
         container.style.cursor = 'default';
       }
     }
-  }, [zoom, selectedTool]);
+  }, [zoom, selectedTool, isModifierPressed]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -397,12 +459,32 @@ const EditorWindow: React.FC = () => {
     };
   }, [cropRegion, textInput, scaleRatio, applyCrop, setCropRegion, setSelectedTool, selectedSize, setSelectedSize, undo, redo, selectedAnnotationId, deleteAnnotation, setSelectedAnnotation]);
 
+  // Helper to get pointer position adjusted for zoom and pan
+  const getAdjustedPointerPosition = (stage: any) => {
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return { x: 0, y: 0 };
+    return {
+      x: (pointer.x - stagePos.x) / zoom,
+      y: (pointer.y - stagePos.y) / zoom,
+    };
+  };
+
   const handleMouseDown = (e: any) => {
     const stage = e.target.getStage();
+    const clickedOnStage = e.target === stage;
+    const clickedOnImage = e.target.className === 'Image';
+    const clickedOnBackground = clickedOnStage || clickedOnImage;
+
+    // Enable panning when Cmd/Ctrl is held (any tool, any zoom level)
+    if (isModifierPressed && clickedOnBackground) {
+      setIsPanning(true);
+      stage.container().style.cursor = 'grabbing';
+      return;
+    }
 
     // For crop tool, start drawing crop region (priority over panning)
     if (selectedTool === 'crop') {
-      const pos = stage.getPointerPosition();
+      const pos = getAdjustedPointerPosition(stage);
       setIsDrawing(true);
       setCropRegion({
         x: pos.x,
@@ -413,8 +495,8 @@ const EditorWindow: React.FC = () => {
       return;
     }
 
-    // Enable panning when zoom > 1 and clicking on stage background
-    if (zoom > 1 && e.target === stage) {
+    // Enable panning when zoom > 1 and clicking on stage/image background
+    if (zoom > 1 && clickedOnBackground) {
       setIsPanning(true);
       stage.container().style.cursor = 'grabbing';
       return;
@@ -422,14 +504,14 @@ const EditorWindow: React.FC = () => {
 
     // For select tool, only handle clicks on annotations (handled in renderAnnotation)
     if (selectedTool === 'select') {
-      // Click on stage background deselects
-      if (e.target === stage) {
+      // Click on stage/image background deselects
+      if (clickedOnBackground) {
         setSelectedAnnotation(null);
       }
       return;
     }
 
-    const pos = stage.getPointerPosition();
+    const pos = getAdjustedPointerPosition(stage);
 
     // Check if clicking on an existing annotation of the same type
     // If yes, select it instead of creating new one
@@ -584,7 +666,7 @@ const EditorWindow: React.FC = () => {
 
     if (!isDrawing) return;
 
-    const pos = stage.getPointerPosition();
+    const pos = getAdjustedPointerPosition(stage);
 
     // Handle crop region drawing
     if (selectedTool === 'crop' && cropRegion) {
@@ -618,8 +700,10 @@ const EditorWindow: React.FC = () => {
       setIsPanning(false);
       if (stageRef.current) {
         const container = stageRef.current.container();
-        // Restore cursor based on current tool
-        if (selectedTool === 'crop') {
+        // Restore cursor based on modifier/tool/zoom
+        if (isModifierPressed) {
+          container.style.cursor = 'grab';
+        } else if (selectedTool === 'crop') {
           container.style.cursor = 'crosshair';
         } else if (zoom > 1) {
           container.style.cursor = 'grab';

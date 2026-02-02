@@ -4,6 +4,41 @@ import { WindowHide } from '../../../wailsjs/runtime/runtime';
 import { useEditorStore } from '../../store/editorStore';
 import Toast from '../Toast/Toast';
 
+// SVG Icons - Clean, macOS-style
+const Icons = {
+  quickSave: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M13 9V13H3V9" />
+      <path d="M8 3V10" />
+      <path d="M5 7L8 10L11 7" />
+    </svg>
+  ),
+  saveAs: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 14H4C3.44772 14 3 13.5523 3 13V3C3 2.44772 3.44772 2 4 2H9L13 6V13C13 13.5523 12.5523 14 12 14Z" />
+      <path d="M9 2V6H13" />
+    </svg>
+  ),
+  copy: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="5" width="9" height="9" rx="1" />
+      <path d="M11 5V3C11 2.44772 10.5523 2 10 2H3C2.44772 2 2 2.44772 2 3V10C2 10.5523 2.44772 11 3 11H5" />
+    </svg>
+  ),
+  crop: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 1V12H15" />
+      <path d="M1 4H12V15" />
+    </svg>
+  ),
+  close: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4L12 12" />
+      <path d="M12 4L4 12" />
+    </svg>
+  ),
+};
+
 interface ActionBarProps {
   stageRef: React.RefObject<any>;
   scaleRatio: number;
@@ -222,22 +257,27 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
         {cropRegion ? (
           <>
             <button className="primary-button" onClick={handleApplyCrop} title="Apply Crop (Enter)">
-              ✂️ Apply Crop
+              {Icons.crop}
+              <span>Apply Crop</span>
             </button>
             <button className="secondary-button" onClick={handleCancelCrop} title={`Cancel (${modKey}+Shift+C)`}>
-              ❌ Cancel
+              {Icons.close}
+              <span>Cancel</span>
             </button>
           </>
         ) : (
           <>
             <button className="primary-button" onClick={handleQuickSave} disabled={isSaving} title={`Quick Save (${modKey}+S)`}>
-              {isSaving ? '...' : '⚡ Quick Save'}
+              {Icons.quickSave}
+              <span>{isSaving ? 'Saving...' : 'Quick Save'}</span>
             </button>
             <button className="secondary-button" onClick={handleSave} disabled={isSaving} title={`Save As (${modKey}+Shift+S)`}>
-              {isSaving ? '...' : '💾 Save As'}
+              {Icons.saveAs}
+              <span>{isSaving ? 'Saving...' : 'Save As'}</span>
             </button>
             <button className="secondary-button" onClick={handleCopy} title={`Copy (${modKey}+C)`}>
-              📋 Copy
+              {Icons.copy}
+              <span>Copy</span>
             </button>
           </>
         )}

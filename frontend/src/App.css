@@ -1,50 +1,70 @@
+/* =============================================================================
+   App.css - Welcome Screen & Main App Container
+   macOS 14 Native Style
+   ============================================================================= */
+
 #App {
-  background-color: rgba(27, 38, 54, 1);
+  background: linear-gradient(180deg, #1D1D1F 0%, #000000 100%);
   text-align: center;
-  color: white;
+  color: var(--color-text-inverted);
   height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+/* Welcome Screen - Clean, minimal macOS style */
 .welcome-screen {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: var(--space-5);
+  padding: var(--space-8);
 }
 
 .welcome-screen h1 {
-  font-size: 48px;
+  font-size: 42px;
+  font-weight: 700;
   margin: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  letter-spacing: -0.025em;
+  color: var(--color-text-inverted);
+  /* Clean text, no gradient - macOS style */
 }
 
 .welcome-screen p {
-  font-size: 18px;
-  color: #aaa;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--color-text-tertiary);
   margin: 0;
+  letter-spacing: -0.01em;
 }
 
+/* Primary CTA Button - macOS Blue Style */
 .capture-button {
-  padding: 16px 48px;
-  font-size: 18px;
-  font-weight: 600;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 500;
+  font-family: var(--font-family);
+  background: var(--color-accent);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: white;
   cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: all var(--transition-fast);
+  min-width: 180px;
 }
 
 .capture-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
+  background: var(--color-accent-hover);
+  transform: scale(1.02);
+}
+
+.capture-button:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .capture-button:disabled {
@@ -52,20 +72,32 @@
   cursor: not-allowed;
 }
 
+/* Secondary Button - Frosted Glass Style */
 .settings-button {
-  margin-top: 16px;
-  padding: 12px 32px;
-  font-size: 16px;
-  background: white;
-  color: #374151;
-  border: 2px solid #d1d5db;
-  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--font-family);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: var(--color-text-inverted);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all var(--transition-fast);
 }
 
 .settings-button:hover {
-  background: #f9fafb;
-  border-color: #9ca3af;
-  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.settings-button:active {
+  transform: scale(0.98);
 }
