@@ -3,6 +3,7 @@ import { SaveImage, OpenSaveDialog, GenerateFilename, CopyImageToClipboard, GetS
 import { WindowHide } from '../../../wailsjs/runtime/runtime';
 import { useEditorStore } from '../../store/editorStore';
 import Toast from '../Toast/Toast';
+import { UploadButton } from './UploadButton';
 
 // SVG Icons - Clean, macOS-style
 const Icons = {
@@ -53,6 +54,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
   const { image, cropRegion, applyCrop, setCropRegion } = useEditorStore();
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [currentImageData, setCurrentImageData] = useState<string>('');
 
   const handleSave = async () => {
     if (!stageRef.current || !image) return;
@@ -138,6 +140,27 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
 
   const handleCancelCrop = () => {
     setCropRegion(null);
+  };
+
+  // Update current image data when stage changes
+  useEffect(() => {
+    if (stageRef.current && image) {
+      const dataURL = stageRef.current.toDataURL({ pixelRatio: 2 });
+      setCurrentImageData(dataURL);
+    }
+  }, [stageRef, image]);
+
+  const handleUploadComplete = (publicUrl: string, directUrl: string) => {
+    setToast({ message: 'Upload successful! URL copied to clipboard.', type: 'success' });
+
+    // Close window after successful upload
+    setTimeout(() => {
+      WindowHide();
+    }, 1500);
+  };
+
+  const handleUploadError = (error: string) => {
+    setToast({ message: `Upload failed: ${error}`, type: 'error' });
   };
 
   const handleQuickSave = async () => {
@@ -279,6 +302,11 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
               {Icons.copy}
               <span>Copy</span>
             </button>
+            <UploadButton
+              imageData={currentImageData}
+              onComplete={handleUploadComplete}
+              onError={handleUploadError}
+            />
           </>
         )}
       </div>

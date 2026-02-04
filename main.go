@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/heytonyne/grabix/internal/model"
+	"github.com/heytonyne/grabix/internal/service/auth"
 	"github.com/heytonyne/grabix/internal/service/capture"
 	"github.com/heytonyne/grabix/internal/service/clipboard"
 	"github.com/heytonyne/grabix/internal/service/file"
@@ -17,6 +18,7 @@ import (
 	"github.com/heytonyne/grabix/internal/service/permission"
 	"github.com/heytonyne/grabix/internal/service/settings"
 	"github.com/heytonyne/grabix/internal/service/startup"
+	"github.com/heytonyne/grabix/internal/service/upload"
 	"github.com/heytonyne/grabix/internal/tray"
 	"github.com/heytonyne/grabix/internal/version"
 	"github.com/wailsapp/wails/v2"
@@ -44,6 +46,8 @@ type App struct {
 	permissionService permission.Service
 	clipboardService  clipboard.Service
 	startupService    startup.Service
+	authService       auth.Service
+	uploadService     upload.Service
 	trayManager       tray.Manager
 }
 
@@ -65,6 +69,8 @@ func (a *App) startup(ctx context.Context) {
 	a.permissionService = permission.New()
 	a.clipboardService = clipboard.New()
 	a.startupService = startup.New()
+	a.authService = auth.New()
+	a.uploadService = upload.New()
 
 	// Setup hotkeys from settings
 	a.setupHotkeys()
@@ -349,6 +355,50 @@ func (a *App) ResumeHotkeys() error {
 // GetVersion returns application version information
 func (a *App) GetVersion() version.Info {
 	return version.Get()
+}
+
+// Auth methods
+
+// AuthStartLogin initiates the OAuth login flow
+func (a *App) AuthStartLogin() (string, error) {
+	return a.authService.StartLogin()
+}
+
+// AuthHandleCallback processes the OAuth callback
+func (a *App) AuthHandleCallback(code string) (*model.User, error) {
+	return a.authService.HandleCallback(code)
+}
+
+// AuthGetCurrentUser returns the currently authenticated user
+func (a *App) AuthGetCurrentUser() (*model.User, error) {
+	return a.authService.GetCurrentUser()
+}
+
+// AuthLogout logs out the current user
+func (a *App) AuthLogout() error {
+	return a.authService.Logout()
+}
+
+// AuthIsLoggedIn checks if user is logged in
+func (a *App) AuthIsLoggedIn() bool {
+	return a.authService.IsLoggedIn()
+}
+
+// Upload methods
+
+// UploadInit initiates a file upload
+func (a *App) UploadInit(filename string, size int64, contentType string) (*upload.InitResponse, error) {
+	return a.uploadService.Init(filename, size, contentType)
+}
+
+// UploadComplete completes a file upload
+func (a *App) UploadComplete(fileID string) (*upload.CompleteResponse, error) {
+	return a.uploadService.Complete(fileID)
+}
+
+// IsUploadConfigured checks if upload is configured
+func (a *App) IsUploadConfigured() bool {
+	return a.uploadService.IsConfigured()
 }
 
 func main() {

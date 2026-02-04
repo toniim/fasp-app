@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GetSettings, UpdateSetting, PauseHotkeys, ResumeHotkeys } from '../../../wailsjs/go/main/App';
 import { Settings } from '../../types';
+import { AuthSection } from '../AuthSection/AuthSection';
 import './SettingsWindow.css';
 
 interface SettingsWindowProps {
@@ -32,7 +33,7 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   const loadSettings = async () => {
     try {
       const data = await GetSettings();
-      setSettings(data);
+      setSettings(data as any);
       setCaptureShortcut(data.hotkeys?.capture_fullscreen || data.hotkeys?.capture || 'Cmd+Shift+5');
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -121,6 +122,11 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
       // Update run_at_startup setting
       await UpdateSetting('run_at_startup', settings.run_at_startup || false);
 
+      // Update after_upload_action setting
+      if (settings.after_upload_action) {
+        await UpdateSetting('after_upload_action', settings.after_upload_action);
+      }
+
       alert('Settings saved successfully!');
       onClose();
     } catch (error) {
@@ -181,6 +187,11 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
         </div>
 
         <div className="settings-section">
+          <h3>Account</h3>
+          <AuthSection />
+        </div>
+
+        <div className="settings-section">
           <h3>General</h3>
 
           <div className="settings-table">
@@ -226,6 +237,27 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
                 >
                   <option value="png">PNG</option>
                   <option value="jpg">JPEG</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>Upload Options</h3>
+
+          <div className="settings-table">
+            <div className="setting-row">
+              <label className="setting-label">After Upload Action</label>
+              <div className="setting-input">
+                <select
+                  value={settings.after_upload_action || 'direct'}
+                  onChange={(e) => setSettings({ ...settings, after_upload_action: e.target.value as any })}
+                >
+                  <option value="none">Do Nothing</option>
+                  <option value="direct">Copy Direct URL</option>
+                  <option value="site">Copy Public URL</option>
+                  <option value="image">Copy Image Markdown</option>
                 </select>
               </div>
             </div>

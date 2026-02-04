@@ -38,19 +38,8 @@
   flex-direction: column;
   z-index: 1000;
   box-sizing: border-box;
-  animation: slideIn 0.2s ease-out;
+  animation: fadeIn 0.15s ease-out;
   overflow: hidden;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -48%);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%);
-  }
 }
 
 /* Header */
@@ -128,20 +117,15 @@
   display: grid;
   grid-template-columns: 140px 1fr;
   gap: 16px;
-  align-items: start;
-}
-
-/* Align label with checkbox (no extra padding needed) */
-.setting-row:has(.setting-input-checkbox) .setting-label {
-  padding-top: 6px;
+  align-items: baseline;
 }
 
 .setting-label {
-  padding-top: 8px;
   font-size: 13px;
   font-weight: 500;
   color: var(--color-text-primary);
   text-align: right;
+  padding-top: 8px; /* Match input padding */
 }
 
 .setting-input {

@@ -101,6 +101,7 @@ export namespace model {
 	    upload_providers: Record<string, UploadProvider>;
 	    active_provider: string;
 	    run_at_startup: boolean;
+	    after_upload_action: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -115,6 +116,7 @@ export namespace model {
 	        this.upload_providers = this.convertValues(source["upload_providers"], UploadProvider, true);
 	        this.active_provider = source["active_provider"];
 	        this.run_at_startup = source["run_at_startup"];
+	        this.after_upload_action = source["after_upload_action"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -134,6 +136,60 @@ export namespace model {
 		    }
 		    return a;
 		}
+	}
+	
+	export class User {
+	    id: string;
+	    email: string;
+	    name: string;
+	    picture: string;
+	    username: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new User(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.email = source["email"];
+	        this.name = source["name"];
+	        this.picture = source["picture"];
+	        this.username = source["username"];
+	    }
+	}
+
+}
+
+export namespace upload {
+	
+	export class CompleteResponse {
+	    public_url: string;
+	    direct_url: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CompleteResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.public_url = source["public_url"];
+	        this.direct_url = source["direct_url"];
+	    }
+	}
+	export class InitResponse {
+	    file_id: string;
+	    upload_url: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new InitResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file_id = source["file_id"];
+	        this.upload_url = source["upload_url"];
+	    }
 	}
 
 }

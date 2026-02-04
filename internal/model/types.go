@@ -60,13 +60,42 @@ type UploadProvider struct {
 
 // Settings represents application settings
 type Settings struct {
-	DefaultSavePath string                    `json:"default_save_path"`
-	DefaultFormat   string                    `json:"default_format"`
-	DefaultQuality  int                       `json:"default_quality"`
-	Hotkeys         map[string]string         `json:"hotkeys"`
-	UploadProviders map[string]UploadProvider `json:"upload_providers"`
-	ActiveProvider  string                    `json:"active_provider"`
-	RunAtStartup    bool                      `json:"run_at_startup"`
+	DefaultSavePath   string                    `json:"default_save_path"`
+	DefaultFormat     string                    `json:"default_format"`
+	DefaultQuality    int                       `json:"default_quality"`
+	Hotkeys           map[string]string         `json:"hotkeys"`
+	UploadProviders   map[string]UploadProvider `json:"upload_providers"`
+	ActiveProvider    string                    `json:"active_provider"`
+	RunAtStartup      bool                      `json:"run_at_startup"`
+	AfterUploadAction string                    `json:"after_upload_action"` // none, direct, site, image
+}
+
+// AuthToken represents OAuth authentication tokens
+type AuthToken struct {
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	IDToken      string    `json:"id_token"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	UserID       string    `json:"user_id"`
+}
+
+// AuthConfig represents OAuth configuration
+type AuthConfig struct {
+	ClientID     string
+	ClientSecret string
+	AuthorizeURL string
+	TokenURL     string
+	UserInfoURL  string
+	RedirectURI  string
+}
+
+// User represents authenticated user information
+type User struct {
+	ID       string `json:"id"`
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Picture  string `json:"picture"`
+	Username string `json:"username"`
 }
 
 // DefaultSettings returns default application settings
@@ -85,7 +114,8 @@ func DefaultSettings() *Settings {
 				Enabled: true,
 			},
 		},
-		ActiveProvider: "clipboard",
-		RunAtStartup:   false,
+		ActiveProvider:    "clipboard",
+		RunAtStartup:      false,
+		AfterUploadAction: "direct",
 	}
 }

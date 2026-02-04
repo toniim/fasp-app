@@ -29,6 +29,8 @@ export interface SaveOptions {
   quality: number;
 }
 
+export type AfterUploadAction = 'none' | 'direct' | 'site' | 'image';
+
 export interface Settings {
   default_save_path?: string;
   default_format?: string;
@@ -37,6 +39,7 @@ export interface Settings {
   upload_providers?: Record<string, UploadProvider>;
   active_provider?: string;
   run_at_startup?: boolean;
+  after_upload_action?: AfterUploadAction;
   defaultSaveLocation?: string; // Alias for compatibility
   defaultFormat?: string; // Alias for compatibility
 }
