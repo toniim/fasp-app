@@ -303,12 +303,11 @@ const EditorWindow: React.FC = () => {
     if (stageRef.current) {
       const container = stageRef.current.container();
 
-      if (isModifierPressed) {
+      if (isModifierPressed && zoom > 1) {
+        // Only show grab cursor when Ctrl/Cmd is held AND zoomed in
         container.style.cursor = 'grab';
       } else if (selectedTool === 'crop') {
         container.style.cursor = 'crosshair';
-      } else if (zoom > 1) {
-        container.style.cursor = 'grab';
       } else {
         container.style.cursor = 'default';
       }
@@ -475,13 +474,6 @@ const EditorWindow: React.FC = () => {
     const clickedOnImage = e.target.className === 'Image';
     const clickedOnBackground = clickedOnStage || clickedOnImage;
 
-    // Enable panning when Cmd/Ctrl is held (any tool, any zoom level)
-    if (isModifierPressed && clickedOnBackground) {
-      setIsPanning(true);
-      stage.container().style.cursor = 'grabbing';
-      return;
-    }
-
     // For crop tool, start drawing crop region (priority over panning)
     if (selectedTool === 'crop') {
       const pos = getAdjustedPointerPosition(stage);
@@ -495,8 +487,8 @@ const EditorWindow: React.FC = () => {
       return;
     }
 
-    // Enable panning when zoom > 1 and clicking on stage/image background
-    if (zoom > 1 && clickedOnBackground) {
+    // Enable panning ONLY when Cmd/Ctrl is held AND zoomed in
+    if (isModifierPressed && zoom > 1 && clickedOnBackground) {
       setIsPanning(true);
       stage.container().style.cursor = 'grabbing';
       return;
@@ -701,12 +693,10 @@ const EditorWindow: React.FC = () => {
       if (stageRef.current) {
         const container = stageRef.current.container();
         // Restore cursor based on modifier/tool/zoom
-        if (isModifierPressed) {
+        if (isModifierPressed && zoom > 1) {
           container.style.cursor = 'grab';
         } else if (selectedTool === 'crop') {
           container.style.cursor = 'crosshair';
-        } else if (zoom > 1) {
-          container.style.cursor = 'grab';
         } else {
           container.style.cursor = 'default';
         }

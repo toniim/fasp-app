@@ -70,18 +70,26 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   applyCrop: (scaleRatio: number) => {
-    const { image, cropRegion, imageHistory, imageHistoryStep } = get();
+    const { image, cropRegion, annotations, imageHistory, imageHistoryStep } = get();
     if (!image || !cropRegion) return;
+
+    // Normalize crop region (handle negative width/height)
+    const normalizedCrop = {
+      x: cropRegion.width < 0 ? cropRegion.x + cropRegion.width : cropRegion.x,
+      y: cropRegion.height < 0 ? cropRegion.y + cropRegion.height : cropRegion.y,
+      width: Math.abs(cropRegion.width),
+      height: Math.abs(cropRegion.height),
+    };
 
     // Create canvas to crop image
     const img = new Image();
     img.src = `data:image/png;base64,${image}`;
     img.onload = () => {
       // Convert crop region from stage coordinates to image coordinates
-      const actualX = cropRegion.x / scaleRatio;
-      const actualY = cropRegion.y / scaleRatio;
-      const actualWidth = cropRegion.width / scaleRatio;
-      const actualHeight = cropRegion.height / scaleRatio;
+      const actualX = normalizedCrop.x / scaleRatio;
+      const actualY = normalizedCrop.y / scaleRatio;
+      const actualWidth = normalizedCrop.width / scaleRatio;
+      const actualHeight = normalizedCrop.height / scaleRatio;
 
       const canvas = document.createElement('canvas');
       canvas.width = actualWidth;
@@ -109,12 +117,56 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       const newHistory = imageHistory.slice(0, imageHistoryStep + 1);
       newHistory.push(croppedBase64);
 
-      // Update image and clear annotations
+      // Adjust annotations to new crop coordinates
+      // Keep annotations that are at least partially within the crop region
+      const adjustedAnnotations = annotations.map(ann => {
+        const adjusted = { ...ann };
+
+        // Adjust position-based annotations (rectangle, highlight, blur, text)
+        if (adjusted.x !== undefined) {
+          adjusted.x = adjusted.x - normalizedCrop.x;
+        }
+        if (adjusted.y !== undefined) {
+          adjusted.y = adjusted.y - normalizedCrop.y;
+        }
+
+        // Adjust point-based annotations (arrow, arrow-text, numbered-arrow)
+        if (adjusted.points) {
+          adjusted.points = adjusted.points.map((p, i) =>
+            i % 2 === 0 ? p - normalizedCrop.x : p - normalizedCrop.y
+          );
+        }
+
+        return adjusted;
+      }).filter(ann => {
+        // Filter out annotations that are completely outside the new cropped area
+        // Check based on annotation type
+        if (ann.points && ann.points.length >= 4) {
+          // For arrows, check if any point is within bounds
+          const xs = ann.points.filter((_, i) => i % 2 === 0);
+          const ys = ann.points.filter((_, i) => i % 2 === 1);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+          return maxX >= 0 && minX <= normalizedCrop.width &&
+                 maxY >= 0 && minY <= normalizedCrop.height;
+        } else if (ann.x !== undefined && ann.y !== undefined) {
+          // For position-based annotations
+          const annRight = ann.x + (ann.width || 0);
+          const annBottom = ann.y + (ann.height || 0);
+          return annRight >= 0 && ann.x <= normalizedCrop.width &&
+                 annBottom >= 0 && ann.y <= normalizedCrop.height;
+        }
+        return true;
+      });
+
+      // Update image and keep adjusted annotations
       set({
         image: croppedBase64,
         cropRegion: null,
-        annotations: [],
-        history: [[]],
+        annotations: adjustedAnnotations,
+        history: [adjustedAnnotations],
         historyStep: 0,
         selectedTool: 'select',
         imageHistory: newHistory,

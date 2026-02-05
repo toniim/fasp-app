@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/heytonyne/grabix/internal/model"
@@ -49,7 +50,12 @@ func (s *serviceImpl) CaptureActiveDisplay() (*model.CaptureResult, error) {
 		$bitmap.Dispose()
 	`, tmpFile)
 
-	cmd := exec.Command("powershell", "-Command", psScript)
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
+	// Hide the PowerShell window
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
+	}
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("failed to capture screenshot: %w", err)
 	}
