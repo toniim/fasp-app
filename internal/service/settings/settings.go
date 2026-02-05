@@ -113,6 +113,12 @@ func (s *serviceImpl) Set(key string, value interface{}) error {
 		} else {
 			return fmt.Errorf("invalid type for run_at_startup")
 		}
+	case "after_upload_action":
+		if v, ok := value.(string); ok {
+			s.settings.AfterUploadAction = v
+		} else {
+			return fmt.Errorf("invalid type for after_upload_action")
+		}
 	default:
 		return fmt.Errorf("unknown setting key: %s", key)
 	}

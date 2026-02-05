@@ -27,6 +27,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -35,6 +36,9 @@ var assets embed.FS
 
 //go:embed build/trayicon.png
 var trayIconData []byte
+
+//go:embed build/windows/trayicon.ico
+var trayIconDataWindows []byte
 
 // App struct
 type App struct {
@@ -121,34 +125,42 @@ func (a *App) setupTray() {
 		println("[DEBUG] Tray setup completed successfully")
 
 		// Set tray icon - delay to ensure status item is created first
-		// Status item is created with 300ms delay, so we need to wait
 		go func() {
-			// Wait for status item to be created (300ms + buffer)
+			// Wait for tray to be initialized
 			time.Sleep(500 * time.Millisecond)
 
-			println("[DEBUG] Embedded icon data size:", len(trayIconData), "bytes")
+			// Use platform-specific icon data and extension
+			var iconData []byte
+			var iconExt string
 
-			// 1. Try embedded icon first
-			tmpDir := os.TempDir()
-			iconPath := filepath.Join(tmpDir, "grabix-trayicon.png")
-
-			// Write embedded icon data to temp file
-			writeErr := os.WriteFile(iconPath, trayIconData, 0644)
-			if writeErr != nil {
-				println("[ERROR] Failed to write embedded tray icon:", writeErr.Error())
-
-				// 2. Fallback to build directory
-				iconPath = "build/trayicon.png"
-				println("[DEBUG] Trying fallback path:", iconPath)
+			if strings.Contains(strings.ToLower(os.Getenv("OS")), "windows") || filepath.Separator == '\\' {
+				// Windows: use ICO format
+				iconData = trayIconDataWindows
+				iconExt = ".ico"
+				println("[DEBUG] Using Windows ICO icon, size:", len(iconData), "bytes")
 			} else {
-				println("[DEBUG] Tray icon written to:", iconPath)
+				// macOS/Linux: use PNG format
+				iconData = trayIconData
+				iconExt = ".png"
+				println("[DEBUG] Using PNG icon, size:", len(iconData), "bytes")
 			}
 
-			// Try to set the icon
+			// Write icon to temp file
+			tmpDir := os.TempDir()
+			iconPath := filepath.Join(tmpDir, "grabix-trayicon"+iconExt)
+
+			writeErr := os.WriteFile(iconPath, iconData, 0644)
+			if writeErr != nil {
+				println("[ERROR] Failed to write tray icon:", writeErr.Error())
+				return
+			}
+			println("[DEBUG] Tray icon written to:", iconPath)
+
+			// Set the icon
 			if err := a.trayManager.SetIconFromFile(iconPath); err != nil {
 				println("[ERROR] Failed to set tray icon:", err.Error())
 			} else {
-				println("[DEBUG] Tray icon set successfully from:", iconPath)
+				println("[DEBUG] Tray icon set successfully")
 			}
 		}()
 	}
@@ -425,6 +437,11 @@ func main() {
 				Title:   "Grabix",
 				Message: "Screenshot & Annotation Tool\n\n" + version.Get().String(),
 			},
+		},
+		Windows: &windows.Options{
+			WebviewIsTransparent: false,
+			WindowIsTranslucent:  false,
+			DisableWindowIcon:    false,
 		},
 		Bind: []interface{}{
 			app,

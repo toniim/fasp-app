@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"runtime"
+	"time"
+)
 
 // DisplayInfo contains information about a display/monitor
 type DisplayInfo struct {
@@ -100,14 +103,25 @@ type User struct {
 
 // DefaultSettings returns default application settings
 func DefaultSettings() *Settings {
+	// Platform-specific default hotkeys
+	hotkeys := map[string]string{
+		"capture_fullscreen": "cmd+shift+3",
+		"capture_region":     "cmd+shift+4",
+	}
+
+	// Use Windows-friendly defaults on Windows
+	if runtime.GOOS == "windows" {
+		hotkeys = map[string]string{
+			"capture_fullscreen": "PrintScreen",
+			"capture_region":     "Ctrl+Shift+S",
+		}
+	}
+
 	return &Settings{
 		DefaultSavePath: "",
 		DefaultFormat:   "png",
 		DefaultQuality:  90,
-		Hotkeys: map[string]string{
-			"capture_fullscreen": "cmd+shift+3",
-			"capture_region":     "cmd+shift+4",
-		},
+		Hotkeys:         hotkeys,
 		UploadProviders: map[string]UploadProvider{
 			"clipboard": {
 				Name:    "Clipboard",

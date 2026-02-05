@@ -264,3 +264,178 @@
   color: var(--color-text-tertiary);
   font-size: 14px;
 }
+
+/* Shortcut Input Group */
+.shortcut-input-group {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.shortcut-input-group .shortcut-input-wrapper {
+  flex: 1;
+}
+
+.shortcut-input.recording {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-light, rgba(0, 122, 255, 0.15));
+}
+
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recording-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--color-accent);
+  border-radius: 50%;
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* Keyboard Icon Button */
+.btn-keyboard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  padding: 0;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-keyboard:hover {
+  background: var(--color-bg-tertiary, #e8e8e8);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-hover, #c0c0c0);
+}
+
+.btn-keyboard.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: white;
+}
+
+.btn-keyboard svg {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Key Picker Panel */
+.key-picker {
+  margin-top: 10px;
+  padding: 14px;
+  background: linear-gradient(to bottom, var(--color-bg-secondary), var(--color-bg-primary));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.key-picker-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.key-picker-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.key-picker-subtitle {
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+}
+
+.key-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+/* Key Combo Button */
+.key-combo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 8px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.key-combo:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-light, rgba(0, 122, 255, 0.05));
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.key-combo.selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-light, rgba(0, 122, 255, 0.1));
+  box-shadow: 0 0 0 2px var(--color-accent-light, rgba(0, 122, 255, 0.2));
+}
+
+.key-combo-keys {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Keyboard Key Style */
+.key-cap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  font-family: var(--font-family);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  background: linear-gradient(to bottom, #fafafa, #e8e8e8);
+  border: 1px solid #d0d0d0;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.key-combo.selected .key-cap {
+  background: linear-gradient(to bottom, var(--color-accent), var(--color-accent-hover, #0066cc));
+  border-color: var(--color-accent-hover, #0055aa);
+  color: white;
+}
+
+.key-plus {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  margin: 0 1px;
+}
+
+.key-combo.selected .key-plus {
+  color: var(--color-accent);
+}

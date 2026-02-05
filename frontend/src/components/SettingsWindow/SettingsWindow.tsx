@@ -13,6 +13,7 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   const [captureShortcut, setCaptureShortcut] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showKeyPicker, setShowKeyPicker] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -104,6 +105,24 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
     }
   };
 
+  const handleSpecialKeySelect = (key: string) => {
+    setCaptureShortcut(key);
+    setShowKeyPicker(false);
+  };
+
+  // Special keys that browsers can't capture (like PrintScreen)
+  const specialKeyOptions = [
+    { value: 'PrintScreen', keys: ['PrtSc'], category: 'Single Key' },
+    { value: 'Ctrl+PrintScreen', keys: ['Ctrl', 'PrtSc'], category: 'With Modifier' },
+    { value: 'Alt+PrintScreen', keys: ['Alt', 'PrtSc'], category: 'With Modifier' },
+    { value: 'Shift+PrintScreen', keys: ['Shift', 'PrtSc'], category: 'With Modifier' },
+    { value: 'Ctrl+Shift+S', keys: ['Ctrl', 'Shift', 'S'], category: 'Common' },
+    { value: 'Ctrl+Shift+4', keys: ['Ctrl', 'Shift', '4'], category: 'Common' },
+    { value: 'F13', keys: ['F13'], category: 'Function Keys' },
+    { value: 'F14', keys: ['F14'], category: 'Function Keys' },
+    { value: 'F15', keys: ['F15'], category: 'Function Keys' },
+  ];
+
   const handleSave = async () => {
     if (!settings) return;
 
@@ -165,22 +184,76 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
             <div className="setting-row">
               <label className="setting-label">Capture Screenshot</label>
               <div className="setting-input">
-                <div className="shortcut-input-wrapper">
-                  <input
-                    type="text"
-                    className="shortcut-input"
-                    value={captureShortcut}
-                    readOnly
-                    placeholder="Click to record shortcut"
-                    onClick={startRecording}
-                    onKeyDown={handleKeyDown}
-                    onBlur={stopRecording}
-                  />
-                  {isRecording && (
-                    <span className="recording-indicator">Press keys...</span>
-                  )}
+                <div className="shortcut-input-group">
+                  <div className="shortcut-input-wrapper">
+                    <input
+                      type="text"
+                      className={`shortcut-input ${isRecording ? 'recording' : ''}`}
+                      value={captureShortcut}
+                      readOnly
+                      placeholder="Click to record..."
+                      onClick={startRecording}
+                      onKeyDown={handleKeyDown}
+                      onBlur={() => {
+                        if (!showKeyPicker) stopRecording();
+                      }}
+                    />
+                    {isRecording && (
+                      <span className="recording-indicator">
+                        <span className="recording-dot"></span>
+                        Listening...
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className={`btn-keyboard ${showKeyPicker ? 'active' : ''}`}
+                    onClick={() => setShowKeyPicker(!showKeyPicker)}
+                    title="Choose from presets"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="2" y="4" width="20" height="16" rx="2" />
+                      <line x1="6" y1="8" x2="6" y2="8" />
+                      <line x1="10" y1="8" x2="10" y2="8" />
+                      <line x1="14" y1="8" x2="14" y2="8" />
+                      <line x1="18" y1="8" x2="18" y2="8" />
+                      <line x1="6" y1="12" x2="6" y2="12" />
+                      <line x1="10" y1="12" x2="10" y2="12" />
+                      <line x1="14" y1="12" x2="14" y2="12" />
+                      <line x1="18" y1="12" x2="18" y2="12" />
+                      <line x1="8" y1="16" x2="16" y2="16" />
+                    </svg>
+                  </button>
                 </div>
-                <p className="setting-hint">Click the input and press your desired key combination</p>
+
+                {showKeyPicker && (
+                  <div className="key-picker">
+                    <div className="key-picker-header">
+                      <span className="key-picker-title">Choose a shortcut</span>
+                      <span className="key-picker-subtitle">PrintScreen cannot be recorded in browser</span>
+                    </div>
+                    <div className="key-picker-grid">
+                      {specialKeyOptions.map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          className={`key-combo ${captureShortcut === opt.value ? 'selected' : ''}`}
+                          onClick={() => handleSpecialKeySelect(opt.value)}
+                        >
+                          <div className="key-combo-keys">
+                            {opt.keys.map((key, idx) => (
+                              <span key={idx}>
+                                <kbd className="key-cap">{key}</kbd>
+                                {idx < opt.keys.length - 1 && <span className="key-plus">+</span>}
+                              </span>
+                            ))}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <p className="setting-hint">Click input to record, or click keyboard icon for presets</p>
               </div>
             </div>
           </div>

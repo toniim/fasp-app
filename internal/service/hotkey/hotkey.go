@@ -201,9 +201,9 @@ func parseHotkey(hotkeyStr string) ([]hotkey.Modifier, hotkey.Key, error) {
 		case "shift":
 			mods = append(mods, hotkey.ModShift)
 		case "alt", "option":
-			mods = append(mods, hotkey.ModOption)
-		case "cmd", "command", "meta":
-			mods = append(mods, hotkey.ModCmd)
+			mods = append(mods, modAlt)
+		case "cmd", "command", "meta", "win", "super":
+			mods = append(mods, modMeta)
 		default:
 			// This is the main key
 			k, err := parseKey(part)
@@ -300,7 +300,9 @@ func parseKey(keyStr string) (hotkey.Key, error) {
 		return hotkey.KeyUp, nil
 	case "down":
 		return hotkey.KeyDown, nil
-	// Additional special keys (using raw keycodes from Events.h)
+	// Additional special keys
+	case "printscreen", "prtsc", "prtscn", "print":
+		return hotkey.Key(0x2C), nil // VK_SNAPSHOT on Windows
 	case "help":
 		return hotkey.Key(0x72), nil
 	case "home":
@@ -313,6 +315,14 @@ func parseKey(keyStr string) (hotkey.Key, error) {
 		return hotkey.Key(0x77), nil
 	case "pagedown":
 		return hotkey.Key(0x79), nil
+	case "insert":
+		return hotkey.Key(0x2D), nil // VK_INSERT
+	case "pause":
+		return hotkey.Key(0x13), nil // VK_PAUSE
+	case "scrolllock":
+		return hotkey.Key(0x91), nil // VK_SCROLL
+	case "numlock":
+		return hotkey.Key(0x90), nil // VK_NUMLOCK
 	}
 
 	return 0, fmt.Errorf("unknown key: %s", keyStr)
