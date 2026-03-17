@@ -1254,18 +1254,65 @@ const EditorWindow: React.FC = () => {
             />
             {annotations.map(renderAnnotation)}
             {currentAnnotation && renderAnnotation(currentAnnotation)}
-            {cropRegion && (
-              <Rect
-                x={cropRegion.x}
-                y={cropRegion.y}
-                width={cropRegion.width}
-                height={cropRegion.height}
-                stroke="#007bff"
-                strokeWidth={2}
-                dash={[10, 5]}
-                fill="rgba(0, 123, 255, 0.1)"
-              />
-            )}
+            {cropRegion && (() => {
+              const normX = cropRegion.width < 0 ? cropRegion.x + cropRegion.width : cropRegion.x;
+              const normY = cropRegion.height < 0 ? cropRegion.y + cropRegion.height : cropRegion.y;
+              const normW = Math.abs(cropRegion.width);
+              const normH = Math.abs(cropRegion.height);
+              
+              return (
+                <Group>
+                  {/* Top Dimmer */}
+                  <Rect
+                    x={0}
+                    y={0}
+                    width={stageSize.width}
+                    height={Math.max(0, normY)}
+                    fill="rgba(0, 0, 0, 0.5)"
+                    listening={false}
+                  />
+                  {/* Bottom Dimmer */}
+                  <Rect
+                    x={0}
+                    y={normY + normH}
+                    width={stageSize.width}
+                    height={Math.max(0, stageSize.height - (normY + normH))}
+                    fill="rgba(0, 0, 0, 0.5)"
+                    listening={false}
+                  />
+                  {/* Left Dimmer */}
+                  <Rect
+                    x={0}
+                    y={normY}
+                    width={Math.max(0, normX)}
+                    height={normH}
+                    fill="rgba(0, 0, 0, 0.5)"
+                    listening={false}
+                  />
+                  {/* Right Dimmer */}
+                  <Rect
+                    x={normX + normW}
+                    y={normY}
+                    width={Math.max(0, stageSize.width - (normX + normW))}
+                    height={normH}
+                    fill="rgba(0, 0, 0, 0.5)"
+                    listening={false}
+                  />
+                  {/* Crop Selection Box */}
+                  <Rect
+                    x={normX}
+                    y={normY}
+                    width={normW}
+                    height={normH}
+                    stroke="#007bff"
+                    strokeWidth={2}
+                    dash={[10, 5]}
+                    fill="transparent"
+                    listening={false}
+                  />
+                </Group>
+              );
+            })()}
             <Transformer
               ref={transformerRef}
               boundBoxFunc={(oldBox, newBox) => {
