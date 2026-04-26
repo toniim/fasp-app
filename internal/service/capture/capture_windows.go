@@ -36,21 +36,23 @@ func (s *serviceImpl) CaptureActiveDisplay() (*model.CaptureResult, error) {
 	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("grabix_capture_%d.png", time.Now().UnixNano()))
 	defer os.Remove(tmpFile)
 
-	// Use PowerShell to capture screenshot
-	// This is a simple approach for MVP
-	psScript := fmt.Sprintf(`
+	// Use PowerShell to capture screenshot. Pass the destination path via
+	// environment variable so it is never interpolated as PowerShell source —
+	// this avoids script-injection if the temp directory contains quote chars.
+	psScript := `
 		Add-Type -AssemblyName System.Windows.Forms
 		Add-Type -AssemblyName System.Drawing
 		$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 		$bitmap = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height
 		$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
 		$graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
-		$bitmap.Save('%s', [System.Drawing.Imaging.ImageFormat]::Png)
+		$bitmap.Save($env:GRABIX_OUT, [System.Drawing.Imaging.ImageFormat]::Png)
 		$graphics.Dispose()
 		$bitmap.Dispose()
-	`, tmpFile)
+	`
 
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
+	cmd.Env = append(os.Environ(), "GRABIX_OUT="+tmpFile)
 	// Hide the PowerShell window
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,

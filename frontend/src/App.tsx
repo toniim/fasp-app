@@ -5,7 +5,13 @@ import { useEditorStore } from './store/editorStore';
 import EditorWindow from './components/EditorWindow/EditorWindow';
 import SettingsWindow from './components/SettingsWindow/SettingsWindow';
 import PermissionWarning from './components/PermissionWarning/PermissionWarning';
+import Toast from './components/Toast/Toast';
 import { EventsOn, WindowShow, WindowUnminimise, WindowHide } from '../wailsjs/runtime/runtime';
+
+interface ToastState {
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
 
 // SVG Icons - Clean, macOS-style
 const Icons = {
@@ -34,6 +40,7 @@ function App() {
   const { image, setImage } = useEditorStore();
   const [isCapturing, setIsCapturing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   // Listen for hotkey events
   useEffect(() => {
@@ -62,7 +69,11 @@ function App() {
     try {
       setIsCapturing(true);
 
-      // Capture screenshot immediately without hiding window
+      // Hide the Grabix window first so it doesn't appear in the screenshot
+      WindowHide();
+      // Give the OS a tick to actually hide the window before capturing
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
       const result = await CaptureActiveDisplay();
 
       // Show window with the captured image
@@ -77,7 +88,7 @@ function App() {
       WindowUnminimise();
       WindowShow();
 
-      alert('Failed to capture screenshot: ' + error);
+      setToast({ message: `Failed to capture screenshot: ${error}`, type: 'error' });
     } finally {
       setIsCapturing(false);
     }
@@ -104,7 +115,7 @@ function App() {
       setImage(imageData);
     } catch (error) {
       console.error('Failed to open image:', error);
-      alert('Failed to open image: ' + error);
+      setToast({ message: `Failed to open image: ${error}`, type: 'error' });
     }
   };
 
@@ -134,6 +145,14 @@ function App() {
       )}
 
       {showSettings && <SettingsWindow onClose={() => setShowSettings(false)} />}
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }

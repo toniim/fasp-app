@@ -23,6 +23,7 @@ type authService struct {
 	currentUser   *model.User
 	codeVerifier  string
 	callbackURL   string
+	expectedState string
 	mu            sync.RWMutex
 	server        *http.Server
 	callbackDone  chan error
@@ -42,7 +43,7 @@ func New() Service {
 
 	tokenManager, err := NewTokenManager()
 	if err != nil {
-		println("Failed to create token manager:", err.Error())
+		fmt.Fprintf(os.Stderr, "failed to create token manager: %v\n", err)
 	}
 
 	return &authService{
@@ -72,14 +73,21 @@ func (s *authService) StartLogin() (string, error) {
 	s.codeVerifier = verifier
 	challenge := GenerateCodeChallenge(verifier)
 
-	// Start local callback server on fixed port for OAuth redirect
-	const callbackPort = 19847
-	s.callbackURL = fmt.Sprintf("http://localhost:%d/callback", callbackPort)
-
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", callbackPort))
+	// Generate a random `state` for CSRF protection
+	state, err := GenerateCodeVerifier()
 	if err != nil {
-		return "", fmt.Errorf("failed to start callback server on port %d: %w", callbackPort, err)
+		return "", fmt.Errorf("failed to generate state: %w", err)
 	}
+	s.expectedState = state
+
+	// Start local callback server on a dynamic loopback port to avoid collisions
+	// and reduce predictability for local-machine attackers.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", fmt.Errorf("failed to start callback server: %w", err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	s.callbackURL = fmt.Sprintf("http://127.0.0.1:%d/callback", port)
 	s.callbackDone = make(chan error, 1)
 
 	// Setup HTTP server for callback
@@ -95,16 +103,17 @@ func (s *authService) StartLogin() (string, error) {
 	// Start server in background
 	go func() {
 		if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			println("Callback server error:", err.Error())
+			fmt.Fprintf(os.Stderr, "callback server error: %v\n", err)
 		}
 	}()
 
 	// Build authorization URL
-	authURL := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&code_challenge=%s&code_challenge_method=S256",
+	authURL := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s&code_challenge=%s&code_challenge_method=S256",
 		s.config.AuthorizeURL,
 		url.QueryEscape(s.config.ClientID),
 		url.QueryEscape(s.callbackURL),
 		url.QueryEscape("email offline_access profile"),
+		url.QueryEscape(state),
 		url.QueryEscape(challenge),
 	)
 
@@ -114,6 +123,7 @@ func (s *authService) StartLogin() (string, error) {
 // handleOAuthCallback processes the OAuth callback request
 func (s *authService) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
+	state := r.URL.Query().Get("state")
 	errMsg := r.URL.Query().Get("error")
 
 	if errMsg != "" {
@@ -121,6 +131,17 @@ func (s *authService) handleOAuthCallback(w http.ResponseWriter, r *http.Request
 		s.callbackDone <- fmt.Errorf("oauth error: %s", errMsg)
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "<html><body><h1>Authentication Failed</h1><p>%s</p><p>You can close this window.</p></body></html>", errMsg)
+		return
+	}
+
+	s.mu.RLock()
+	expected := s.expectedState
+	s.mu.RUnlock()
+	if expected == "" || state != expected {
+		s.callbackError = "invalid state"
+		s.callbackDone <- fmt.Errorf("invalid oauth state")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "<html><body><h1>Authentication Failed</h1><p>Invalid state parameter</p><p>You can close this window.</p></body></html>")
 		return
 	}
 

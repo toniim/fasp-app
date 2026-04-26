@@ -30,21 +30,23 @@ func (s *serviceImpl) CopyImage(data []byte) error {
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 
-	// Use PowerShell to copy image to clipboard
-	psScript := fmt.Sprintf(`
+	// Use PowerShell to copy image to clipboard. Pass the file path via
+	// environment variable to avoid PowerShell script injection if the temp
+	// directory contains quote characters.
+	psScript := `
 		Add-Type -AssemblyName System.Windows.Forms
 		Add-Type -AssemblyName System.Drawing
-		$img = [System.Drawing.Image]::FromFile('%s')
+		$img = [System.Drawing.Image]::FromFile($env:GRABIX_IN)
 		[System.Windows.Forms.Clipboard]::SetImage($img)
 		$img.Dispose()
-	`, tmpFile)
+	`
 
-	cmd := exec.Command("powershell", "-Command", psScript)
-	
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
+	cmd.Env = append(os.Environ(), "GRABIX_IN="+tmpFile)
+
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to copy to clipboard: %w", err)
 	}
 
 	return nil
 }
-
