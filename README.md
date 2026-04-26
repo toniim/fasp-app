@@ -167,7 +167,8 @@ grabix/
 **Saved Images**:
 - PNG (lossless, recommended)
 - JPEG (lossy, smaller files)
-- WebP (modern compression)
+- WebP (read-only — Grabix can open WebP source images but does not yet
+  encode WebP output; choose PNG or JPEG when saving)
 
 **Settings** (`~/.grabix/settings.json`):
 - Hotkey bindings

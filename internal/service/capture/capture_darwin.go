@@ -35,8 +35,8 @@ func (s *serviceImpl) CaptureActiveDisplay() (*model.CaptureResult, error) {
 	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("grabix_capture_%d.png", time.Now().UnixNano()))
 	defer os.Remove(tmpFile)
 
-	// Use macOS screencapture command
-	cmd := exec.Command("screencapture", "-x", "-C", tmpFile)
+	// Use macOS screencapture command (-x = silent, no cursor by default)
+	cmd := exec.Command("screencapture", "-x", "-t", "png", tmpFile)
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("failed to capture screenshot: %w", err)
 	}

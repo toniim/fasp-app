@@ -152,7 +152,9 @@ const EditorWindow: React.FC = () => {
             updates.fontSize = ann.fontSize * scaleFactor;
           }
 
-          updateAnnotation(ann.id, updates);
+          // Window-resize rescaling is coordinate normalization, not a user
+          // edit, so don't push history entries for each annotation.
+          updateAnnotation(ann.id, updates, false);
         });
       }
 

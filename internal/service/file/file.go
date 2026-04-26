@@ -4,17 +4,36 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/heytonyne/grabix/internal/model"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.org/x/image/webp"
 )
+
+// allowedImageExtensions limits SaveImage output to known formats
+var allowedImageExtensions = map[string]bool{
+	".png":  true,
+	".jpg":  true,
+	".jpeg": true,
+	".webp": true,
+}
+
+// imageMagic is the set of magic byte prefixes we accept as image data
+var imageMagic = [][]byte{
+	{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, // PNG
+	{0xFF, 0xD8, 0xFF},                            // JPEG
+	{'G', 'I', 'F', '8'},                          // GIF
+	{'B', 'M'},                                    // BMP
+}
 
 // serviceImpl implements the Service interface
 type serviceImpl struct {
@@ -78,6 +97,10 @@ func (s *serviceImpl) ReadImageFile(path string) (string, error) {
 		return "", fmt.Errorf("failed to read image file: %w", err)
 	}
 
+	if !isImageBytes(data) {
+		return "", errors.New("file is not a recognized image format")
+	}
+
 	// Encode to base64
 	encoded := base64.StdEncoding.EncodeToString(data)
 	return encoded, nil
@@ -89,22 +112,26 @@ func (s *serviceImpl) SaveImage(options *model.SaveOptions, data []byte) error {
 		return fmt.Errorf("save path is required")
 	}
 
-	// Decode base64 if needed
-	var imgData []byte
-	if isBase64(data) {
-		decoded, err := base64.StdEncoding.DecodeString(string(data))
-		if err != nil {
-			return fmt.Errorf("failed to decode base64 data: %w", err)
-		}
-		imgData = decoded
-	} else {
-		imgData = data
+	ext := strings.ToLower(filepath.Ext(options.Path))
+	if !allowedImageExtensions[ext] {
+		return fmt.Errorf("unsupported file extension: %s", ext)
 	}
 
-	// Decode image
+	// Decode base64 if needed
+	imgData, err := decodeImagePayload(data)
+	if err != nil {
+		return err
+	}
+
+	// Decode image (PNG/JPEG via stdlib, WebP via x/image)
 	img, _, err := image.Decode(bytes.NewReader(imgData))
 	if err != nil {
-		return fmt.Errorf("failed to decode image: %w", err)
+		// Fall back to webp decoder if stdlib could not detect the format
+		if w, werr := webp.Decode(bytes.NewReader(imgData)); werr == nil {
+			img = w
+		} else {
+			return fmt.Errorf("failed to decode image: %w", err)
+		}
 	}
 
 	// Create directory if it doesn't exist
@@ -120,9 +147,14 @@ func (s *serviceImpl) SaveImage(options *model.SaveOptions, data []byte) error {
 	}
 	defer file.Close()
 
+	format := options.Format
+	if format == "" {
+		format = strings.TrimPrefix(ext, ".")
+	}
+
 	// Encode based on format
-	switch options.Format {
-	case "png", "":
+	switch format {
+	case "png":
 		err = png.Encode(file, img)
 	case "jpeg", "jpg":
 		quality := options.Quality
@@ -130,8 +162,12 @@ func (s *serviceImpl) SaveImage(options *model.SaveOptions, data []byte) error {
 			quality = 90
 		}
 		err = jpeg.Encode(file, img, &jpeg.Options{Quality: quality})
+	case "webp":
+		// Go's standard ecosystem only ships a webp decoder. Re-encode as PNG
+		// for now and surface a clear message instead of writing a bad file.
+		return fmt.Errorf("webp encoding is not supported; choose png or jpeg")
 	default:
-		return fmt.Errorf("unsupported format: %s", options.Format)
+		return fmt.Errorf("unsupported format: %s", format)
 	}
 
 	if err != nil {
@@ -139,6 +175,31 @@ func (s *serviceImpl) SaveImage(options *model.SaveOptions, data []byte) error {
 	}
 
 	return nil
+}
+
+// decodeImagePayload accepts either raw image bytes, a "data:image/...;base64," URI,
+// or plain base64 text and returns raw bytes ready for decoding.
+func decodeImagePayload(data []byte) ([]byte, error) {
+	if isImageBytes(data) {
+		return data, nil
+	}
+
+	s := string(data)
+	if strings.HasPrefix(s, "data:") {
+		if idx := strings.Index(s, ","); idx != -1 {
+			s = s[idx+1:]
+		}
+	}
+	s = strings.TrimSpace(s)
+
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode base64 data: %w", err)
+	}
+	if !isImageBytes(decoded) {
+		return nil, errors.New("decoded payload is not a recognized image format")
+	}
+	return decoded, nil
 }
 
 // GetDefaultSavePath returns the default save path from settings
@@ -163,23 +224,16 @@ func (s *serviceImpl) GenerateFilename(format string) string {
 	return fmt.Sprintf("screenshot_%s.%s", timestamp, format)
 }
 
-// isBase64 checks if data is base64 encoded
-func isBase64(data []byte) bool {
-	if len(data) == 0 {
-		return false
+// isImageBytes returns true if data starts with a known image magic header.
+func isImageBytes(data []byte) bool {
+	for _, magic := range imageMagic {
+		if bytes.HasPrefix(data, magic) {
+			return true
+		}
 	}
-	// Simple heuristic: base64 data is typically longer and contains only valid base64 chars
-	if len(data) > 100 && bytes.Contains(data, []byte("data:image")) {
+	// WebP: "RIFF????WEBP"
+	if len(data) >= 12 && bytes.Equal(data[:4], []byte("RIFF")) && bytes.Equal(data[8:12], []byte("WEBP")) {
 		return true
 	}
-	// Try to decode a small portion
-	_, err := base64.StdEncoding.DecodeString(string(data[:min(100, len(data))]))
-	return err == nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+	return false
 }

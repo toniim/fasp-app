@@ -2,10 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { GetSettings, UpdateSetting, PauseHotkeys, ResumeHotkeys } from '../../../wailsjs/go/main/App';
 import { Settings } from '../../types';
 import { AuthSection } from '../AuthSection/AuthSection';
+import Toast from '../Toast/Toast';
 import './SettingsWindow.css';
 
 interface SettingsWindowProps {
   onClose: () => void;
+}
+
+interface ToastState {
+  message: string;
+  type: 'success' | 'error' | 'info';
 }
 
 const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
@@ -14,6 +20,7 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showKeyPicker, setShowKeyPicker] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -146,11 +153,12 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
         await UpdateSetting('after_upload_action', settings.after_upload_action);
       }
 
-      alert('Settings saved successfully!');
-      onClose();
+      setToast({ message: 'Settings saved successfully!', type: 'success' });
+      // Brief delay so the user sees the confirmation before the window closes.
+      setTimeout(() => onClose(), 600);
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings');
+      setToast({ message: 'Failed to save settings', type: 'error' });
     } finally {
       setIsSaving(false);
     }
@@ -344,6 +352,14 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
           {isSaving ? 'Saving...' : 'Save'}
         </button>
       </div>
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
     </>
   );

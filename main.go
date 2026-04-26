@@ -4,8 +4,9 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"log/slog"
 	"os"
-	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"time"
 
@@ -85,12 +86,11 @@ func (a *App) startup(ctx context.Context) {
 
 // setupTray initializes the system tray icon
 func (a *App) setupTray() {
-	println("[DEBUG] setupTray called")
+	slog.Debug("setupTray called")
 	a.trayManager = tray.NewManager()
-	println("[DEBUG] tray.NewManager() returned:", a.trayManager)
 
 	err := a.trayManager.Setup(func(action tray.Action) {
-		println("[DEBUG] Tray action received:", action)
+		slog.Debug("tray action received", "action", action)
 		switch action {
 		case tray.ActionCapture:
 			// Trigger screenshot capture
@@ -120,50 +120,28 @@ func (a *App) setupTray() {
 	})
 
 	if err != nil {
-		println("[ERROR] Failed to setup tray:", err.Error())
-	} else {
-		println("[DEBUG] Tray setup completed successfully")
-
-		// Set tray icon - delay to ensure status item is created first
-		go func() {
-			// Wait for tray to be initialized
-			time.Sleep(500 * time.Millisecond)
-
-			// Use platform-specific icon data and extension
-			var iconData []byte
-			var iconExt string
-
-			if strings.Contains(strings.ToLower(os.Getenv("OS")), "windows") || filepath.Separator == '\\' {
-				// Windows: use ICO format
-				iconData = trayIconDataWindows
-				iconExt = ".ico"
-				println("[DEBUG] Using Windows ICO icon, size:", len(iconData), "bytes")
-			} else {
-				// macOS/Linux: use PNG format
-				iconData = trayIconData
-				iconExt = ".png"
-				println("[DEBUG] Using PNG icon, size:", len(iconData), "bytes")
-			}
-
-			// Write icon to temp file
-			tmpDir := os.TempDir()
-			iconPath := filepath.Join(tmpDir, "grabix-trayicon"+iconExt)
-
-			writeErr := os.WriteFile(iconPath, iconData, 0644)
-			if writeErr != nil {
-				println("[ERROR] Failed to write tray icon:", writeErr.Error())
-				return
-			}
-			println("[DEBUG] Tray icon written to:", iconPath)
-
-			// Set the icon
-			if err := a.trayManager.SetIconFromFile(iconPath); err != nil {
-				println("[ERROR] Failed to set tray icon:", err.Error())
-			} else {
-				println("[DEBUG] Tray icon set successfully")
-			}
-		}()
+		slog.Error("failed to setup tray", "err", err)
+		return
 	}
+	slog.Debug("tray setup completed")
+
+	// Set tray icon — pass embedded bytes directly to avoid writing to /tmp on every launch
+	go func() {
+		// Small delay so the status item is fully ready before icon update
+		time.Sleep(500 * time.Millisecond)
+
+		var iconData []byte
+		if goruntime.GOOS == "windows" {
+			iconData = trayIconDataWindows
+		} else {
+			iconData = trayIconData
+		}
+		slog.Debug("updating tray icon", "os", goruntime.GOOS, "size", len(iconData))
+
+		if err := a.trayManager.UpdateIcon(iconData); err != nil {
+			slog.Error("failed to set tray icon", "err", err)
+		}
+	}()
 }
 
 // shutdown is called when the app is shutting down
@@ -213,36 +191,43 @@ func (a *App) buildMenu() *menu.Menu {
 
 // setupHotkeys registers hotkeys from settings
 func (a *App) setupHotkeys() {
-	settings, err := a.settingsService.GetAll()
+	current, err := a.settingsService.GetAll()
 	if err != nil {
-		println("Failed to get settings:", err.Error())
+		slog.Error("failed to get settings", "err", err)
 		return
 	}
 
 	// Stop existing hotkey service if running
 	a.hotkeyService.Stop()
 
-	// Register capture hotkey BEFORE starting
-	if captureKey, ok := settings.Hotkeys["capture_fullscreen"]; ok && captureKey != "" {
-		println("Setting up hotkey:", captureKey)
-		err := a.hotkeyService.Register(captureKey, func() {
-			println("🔥 Hotkey pressed! Emitting event...")
-			// Trigger capture when hotkey is pressed
-			runtime.EventsEmit(a.ctx, "hotkey:capture")
-		})
-		if err != nil {
-			println("Failed to register hotkey:", err.Error())
+	hasAny := false
+	register := func(name, eventName string) {
+		combo, ok := current.Hotkeys[name]
+		if !ok || combo == "" {
 			return
 		}
-	} else {
-		println("No capture hotkey configured")
+		slog.Debug("registering hotkey", "name", name, "combo", combo)
+		if err := a.hotkeyService.Register(combo, func() {
+			slog.Debug("hotkey pressed", "name", name)
+			runtime.EventsEmit(a.ctx, eventName)
+		}); err != nil {
+			slog.Error("failed to register hotkey", "name", name, "combo", combo, "err", err)
+			return
+		}
+		hasAny = true
+	}
+
+	register("capture_fullscreen", "hotkey:capture")
+	register("capture_region", "hotkey:capture_region")
+
+	if !hasAny {
+		slog.Warn("no capture hotkey configured")
 		return
 	}
 
 	// Start listening AFTER registering all hotkeys
-	err = a.hotkeyService.Start()
-	if err != nil {
-		println("Failed to start hotkey service:", err.Error())
+	if err := a.hotkeyService.Start(); err != nil {
+		slog.Error("failed to start hotkey service", "err", err)
 	}
 }
 
@@ -354,13 +339,13 @@ func (a *App) RequestScreenRecordingPermission() error {
 
 // PauseHotkeys temporarily stops hotkey listening (for recording new hotkeys)
 func (a *App) PauseHotkeys() error {
-	println("[DEBUG] Pausing hotkeys...")
+	slog.Debug("pausing hotkeys")
 	return a.hotkeyService.Stop()
 }
 
 // ResumeHotkeys resumes hotkey listening after recording
 func (a *App) ResumeHotkeys() error {
-	println("[DEBUG] Resuming hotkeys...")
+	slog.Debug("resuming hotkeys")
 	return a.hotkeyService.Start()
 }
 
@@ -427,7 +412,7 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 255},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
 		Menu:             app.buildMenu(),
@@ -449,6 +434,14 @@ func main() {
 	})
 
 	if err != nil {
-		println("Error:", err.Error())
+		slog.Error("wails run failed", "err", err)
 	}
+}
+
+func init() {
+	level := slog.LevelInfo
+	if strings.EqualFold(os.Getenv("GRABIX_LOG_LEVEL"), "debug") {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 }

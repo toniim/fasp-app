@@ -103,10 +103,11 @@ type User struct {
 
 // DefaultSettings returns default application settings
 func DefaultSettings() *Settings {
-	// Platform-specific default hotkeys
+	// Platform-specific default hotkeys.
+	// Avoid cmd+shift+3/4 on macOS because they collide with native screenshot shortcuts.
 	hotkeys := map[string]string{
-		"capture_fullscreen": "cmd+shift+3",
-		"capture_region":     "cmd+shift+4",
+		"capture_fullscreen": "cmd+shift+5",
+		"capture_region":     "cmd+shift+6",
 	}
 
 	// Use Windows-friendly defaults on Windows

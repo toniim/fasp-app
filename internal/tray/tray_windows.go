@@ -4,6 +4,7 @@ package tray
 
 import (
 	"os"
+	"sync"
 
 	"github.com/getlantern/systray"
 )
@@ -13,6 +14,7 @@ type windowsManager struct {
 	initialized bool
 	iconData    []byte
 	quitChan    chan struct{}
+	quitOnce    sync.Once
 }
 
 func NewManager() Manager {
@@ -119,10 +121,9 @@ func (m *windowsManager) Quit() {
 		return
 	}
 
-	select {
-	case m.quitChan <- struct{}{}:
-	default:
-	}
+	m.quitOnce.Do(func() {
+		close(m.quitChan)
+	})
 
 	m.initialized = false
 }

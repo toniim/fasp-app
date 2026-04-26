@@ -7,9 +7,9 @@ interface EditorStore extends EditorState {
   setSelectedColor: (color: string) => void;
   setSelectedSize: (size: number) => void;
   setCropRegion: (region: CropRegion | null) => void;
-  applyCrop: (scaleRatio: number) => void;
+  applyCrop: (scaleRatio: number) => Promise<void>;
   addAnnotation: (annotation: Annotation) => void;
-  updateAnnotation: (id: string, updates: Partial<Annotation>) => void;
+  updateAnnotation: (id: string, updates: Partial<Annotation>, commit?: boolean) => void;
   deleteAnnotation: (id: string) => void;
   setSelectedAnnotation: (id: string | null) => void;
   clearAnnotations: () => void;
@@ -57,6 +57,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     set({ selectedTool: tool, selectedAnnotationId: null });
   },
 
+  // setImage above already resets selectedTool to 'crop' so newly opened
+  // images go through the cropper before annotation editing.
+
   setSelectedColor: (color: string) => {
     set({ selectedColor: color });
   },
@@ -71,7 +74,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
   applyCrop: (scaleRatio: number) => {
     const { image, cropRegion, annotations, imageHistory, imageHistoryStep } = get();
-    if (!image || !cropRegion) return;
+    if (!image || !cropRegion) return Promise.resolve();
 
     // Normalize crop region (handle negative width/height)
     const normalizedCrop = {
@@ -82,8 +85,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     };
 
     // Create canvas to crop image
+    return new Promise<void>((resolve, reject) => {
     const img = new Image();
     img.src = `data:image/png;base64,${image}`;
+    img.onerror = () => reject(new Error('Failed to load image for cropping'));
     img.onload = () => {
       // Convert crop region from stage coordinates to image coordinates
       const actualX = normalizedCrop.x / scaleRatio;
@@ -172,7 +177,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         imageHistory: newHistory,
         imageHistoryStep: newHistory.length - 1,
       });
+      resolve();
     };
+    });
   },
 
   addAnnotation: (annotation: Annotation) => {
@@ -188,12 +195,26 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     });
   },
 
-  updateAnnotation: (id: string, updates: Partial<Annotation>) => {
-    const { annotations } = get();
+  // updateAnnotation pushes a history entry by default so drag/resize
+  // operations are undoable. Pass `commit=false` for high-frequency intermediate
+  // updates (e.g. while a drag is still in progress) and call once more with
+  // `commit=true` (or omit) on the final update.
+  updateAnnotation: (id: string, updates: Partial<Annotation>, commit: boolean = true) => {
+    const { annotations, history, historyStep } = get();
     const newAnnotations = annotations.map((ann) =>
       ann.id === id ? { ...ann, ...updates } : ann
     );
-    set({ annotations: newAnnotations });
+    if (!commit) {
+      set({ annotations: newAnnotations });
+      return;
+    }
+    const newHistory = history.slice(0, historyStep + 1);
+    newHistory.push(newAnnotations);
+    set({
+      annotations: newAnnotations,
+      history: newHistory,
+      historyStep: historyStep + 1,
+    });
   },
 
   deleteAnnotation: (id: string) => {
