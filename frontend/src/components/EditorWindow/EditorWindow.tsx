@@ -43,9 +43,13 @@ const EditorWindow: React.FC = () => {
   const [textInput, setTextInput] = useState<{ x: number; y: number; fontSize?: number; annotationId?: string } | null>(null);
   const [textValue, setTextValue] = useState('');
   const [version, setVersion] = useState('');
+  const [hoveredAnnotationId, setHoveredAnnotationId] = useState<string | null>(null);
+  // Id of the text-box annotation currently being edited inline (in-canvas).
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
 
   const stageRef = useRef<any>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
+  const textEditRef = useRef<HTMLTextAreaElement>(null);
   const transformerRef = useRef<any>(null);
   const shapeRefs = useRef<{ [key: string]: any }>({});
 
@@ -198,11 +202,18 @@ const EditorWindow: React.FC = () => {
           ? Math.min(oldZoom * scaleBy, 3)
           : Math.max(oldZoom / scaleBy, 0.5);
 
-        // When zoom <= 1, center the image
+        // When zoom <= 1, center the (down-)scaled image within the stage.
+        // Konva scales the content, not the canvas DOM, so a smaller image
+        // would otherwise stick to the top-left corner. Offset by the empty
+        // margin to keep it centered.
         if (newZoom <= 1) {
+          const centeredPos = {
+            x: (stageSize.width * (1 - newZoom)) / 2,
+            y: (stageSize.height * (1 - newZoom)) / 2,
+          };
           setZoom(newZoom);
-          setStagePos({ x: 0, y: 0 });
-          stage.position({ x: 0, y: 0 });
+          setStagePos(centeredPos);
+          stage.position(centeredPos);
           stage.batchDraw();
           return;
         }
@@ -224,9 +235,17 @@ const EditorWindow: React.FC = () => {
         // Regular scroll to pan when zoomed in
         wheelEvent.preventDefault();
 
+        // Shift + scroll => horizontal pan. The webview doesn't remap the
+        // vertical wheel delta to deltaX, so do it ourselves: treat deltaY
+        // as horizontal movement when Shift is held.
+        const horizontalDelta = wheelEvent.shiftKey
+          ? wheelEvent.deltaX || wheelEvent.deltaY
+          : wheelEvent.deltaX;
+        const verticalDelta = wheelEvent.shiftKey ? 0 : wheelEvent.deltaY;
+
         const newPos = {
-          x: stagePos.x - wheelEvent.deltaX,
-          y: stagePos.y - wheelEvent.deltaY,
+          x: stagePos.x - horizontalDelta,
+          y: stagePos.y - verticalDelta,
         };
 
         setStagePos(newPos);
@@ -247,20 +266,27 @@ const EditorWindow: React.FC = () => {
 
   // Center image when zoom <= 1 (from ZoomBar or any source)
   useEffect(() => {
-    if (zoom <= 1 && (stagePos.x !== 0 || stagePos.y !== 0)) {
-      setStagePos({ x: 0, y: 0 });
-      if (stageRef.current) {
-        stageRef.current.position({ x: 0, y: 0 });
-        stageRef.current.batchDraw();
+    if (zoom <= 1) {
+      const centeredPos = {
+        x: (stageSize.width * (1 - zoom)) / 2,
+        y: (stageSize.height * (1 - zoom)) / 2,
+      };
+      if (stagePos.x !== centeredPos.x || stagePos.y !== centeredPos.y) {
+        setStagePos(centeredPos);
+        if (stageRef.current) {
+          stageRef.current.position(centeredPos);
+          stageRef.current.batchDraw();
+        }
       }
     }
-  }, [zoom]);
+  }, [zoom, stageSize]);
 
   // Attach transformer to selected annotation
   useEffect(() => {
     if (!transformerRef.current) return;
 
-    if (selectedAnnotationId && shapeRefs.current[selectedAnnotationId]) {
+    // Don't attach while inline-editing a text box (its node is unmounted).
+    if (selectedAnnotationId && !editingTextId && shapeRefs.current[selectedAnnotationId]) {
       const node = shapeRefs.current[selectedAnnotationId];
       transformerRef.current.nodes([node]);
       transformerRef.current.getLayer().batchDraw();
@@ -268,7 +294,7 @@ const EditorWindow: React.FC = () => {
       transformerRef.current.nodes([]);
       transformerRef.current.getLayer()?.batchDraw();
     }
-  }, [selectedAnnotationId, annotations]);
+  }, [selectedAnnotationId, annotations, editingTextId]);
 
 
 
@@ -317,8 +343,8 @@ const EditorWindow: React.FC = () => {
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in text input
-      if (textInput) return;
+      // Ignore if typing in a text input / inline text box
+      if (textInput || editingTextId) return;
 
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
@@ -456,7 +482,7 @@ const EditorWindow: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [cropRegion, textInput, scaleRatio, applyCrop, setCropRegion, setSelectedTool, selectedSize, setSelectedSize, undo, redo, selectedAnnotationId, deleteAnnotation, setSelectedAnnotation]);
+  }, [cropRegion, textInput, editingTextId, scaleRatio, applyCrop, setCropRegion, setSelectedTool, selectedSize, setSelectedSize, undo, redo, selectedAnnotationId, deleteAnnotation, setSelectedAnnotation]);
 
   // Helper to get pointer position adjusted for zoom and pan
   const getAdjustedPointerPosition = (stage: any) => {
@@ -631,12 +657,15 @@ const EditorWindow: React.FC = () => {
         });
         break;
       case 'text':
-        // Show text input at click position
-        setTextInput({ x: pos.x, y: pos.y, fontSize });
-        setTextValue('');
-        setIsDrawing(false);
-        // Focus input after render
-        setTimeout(() => textInputRef.current?.focus(), 0);
+        // Text is now drawn as a box; the text is typed inline afterwards.
+        setCurrentAnnotation({
+          ...baseAnnotation,
+          width: 0,
+          height: 0,
+          text: '',
+          fontSize,
+          fill: selectedColor,
+        });
         break;
     }
   };
@@ -672,7 +701,7 @@ const EditorWindow: React.FC = () => {
 
     if (!currentAnnotation) return;
 
-    if (selectedTool === 'rectangle' || selectedTool === 'highlight' || selectedTool === 'blur') {
+    if (selectedTool === 'rectangle' || selectedTool === 'highlight' || selectedTool === 'blur' || selectedTool === 'text') {
       setCurrentAnnotation({
         ...currentAnnotation,
         width: pos.x - currentAnnotation.x,
@@ -727,6 +756,32 @@ const EditorWindow: React.FC = () => {
     }
 
     if (!currentAnnotation) return;
+
+    // Text tool: finalize the box, then start inline editing immediately.
+    if (selectedTool === 'text') {
+      const minW = 120;
+      const minH = (currentAnnotation.fontSize || 16) + 12;
+      let x = currentAnnotation.x;
+      let y = currentAnnotation.y;
+      let w = currentAnnotation.width || 0;
+      let h = currentAnnotation.height || 0;
+      // Normalize negative drag direction
+      if (w < 0) { x += w; w = -w; }
+      if (h < 0) { y += h; h = -h; }
+      // A plain click (no drag) or tiny box gets a sensible default size
+      if (w < minW) w = minW;
+      if (h < minH) h = minH;
+
+      const textAnn = { ...currentAnnotation, x, y, width: w, height: h, text: '' };
+      addAnnotation(textAnn);
+      setEditingTextId(textAnn.id);
+      setSelectedAnnotation(textAnn.id);
+      setSelectedTool('select');
+      setIsDrawing(false);
+      setCurrentAnnotation(null);
+      setTimeout(() => textEditRef.current?.focus(), 0);
+      return;
+    }
 
     if (currentAnnotation.width !== 0 || currentAnnotation.height !== 0 || currentAnnotation.points) {
       // For arrow-text, show text input after drawing
@@ -804,6 +859,26 @@ const EditorWindow: React.FC = () => {
     }
   };
 
+  // Finish inline text-box editing. Removes the box if left empty.
+  const commitTextEditing = () => {
+    const id = editingTextId;
+    setEditingTextId(null);
+    if (!id) return;
+    const ann = annotations.find((a) => a.id === id);
+    if (ann && !(ann.text || '').trim()) {
+      deleteAnnotation(id);
+      setSelectedAnnotation(null);
+    }
+  };
+
+  const handleTextEditKeyDown = (e: React.KeyboardEvent) => {
+    // Enter adds a new line (multi-line box). Escape / blur commit.
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      commitTextEditing();
+    }
+  };
+
   // Helper function to calculate curved arrow path
   const getCurvedArrowPath = (points: number[], curvature: number = 0.3): number[] => {
     if (points.length < 4) return points;
@@ -876,30 +951,69 @@ const EditorWindow: React.FC = () => {
 
   const handleTransformEnd = (e: any, annId: string) => {
     const node = e.target;
-    const scaleX = node.scaleX();
-    const scaleY = node.scaleY();
-
-    // Reset scale
-    node.scaleX(1);
-    node.scaleY(1);
-
     const ann = annotations.find((a) => a.id === annId);
     if (!ann) return;
 
-    // Update annotation with new dimensions
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+
+    // Point-based annotations (arrows): bake the transformer's scale/rotation/
+    // position into the points so the resize/rotate sticks, then reset the node.
+    if (ann.points && (ann.type === 'arrow' || ann.type === 'arrow-text' || ann.type === 'numbered-arrow')) {
+      const transform = node.getTransform().copy();
+      const newPoints: number[] = [];
+      for (let i = 0; i < ann.points.length; i += 2) {
+        const p = transform.point({ x: ann.points[i], y: ann.points[i + 1] });
+        newPoints.push(p.x, p.y);
+      }
+      node.scaleX(1);
+      node.scaleY(1);
+      node.rotation(0);
+      node.position({ x: 0, y: 0 });
+      updateAnnotation(annId, { points: newPoints });
+      return;
+    }
+
+    // Reset scale for box-based annotations
+    node.scaleX(1);
+    node.scaleY(1);
+
+    // Update annotation with new dimensions (and rotation from the transformer)
     if (ann.type === 'rectangle' || ann.type === 'highlight' || ann.type === 'blur') {
       updateAnnotation(annId, {
         x: node.x(),
         y: node.y(),
         width: Math.max(5, (ann.width || 0) * scaleX),
         height: Math.max(5, (ann.height || 0) * scaleY),
+        rotation: node.rotation(),
       });
     } else if (ann.type === 'text') {
+      // Text is a box: resize changes the wrapping area, not the font size.
       updateAnnotation(annId, {
         x: node.x(),
         y: node.y(),
-        fontSize: Math.max(8, (ann.fontSize || 16) * scaleY),
+        width: Math.max(40, (ann.width || 0) * scaleX),
+        height: Math.max((ann.fontSize || 16) + 8, (ann.height || 0) * scaleY),
+        rotation: node.rotation(),
       });
+    }
+  };
+
+  const handleAnnotationMouseEnter = (annId: string) => {
+    setHoveredAnnotationId(annId);
+    const stage = stageRef.current;
+    if (stage && (selectedTool === 'select' || annId === selectedAnnotationId)) {
+      stage.container().style.cursor = 'move';
+    }
+  };
+
+  const handleAnnotationMouseLeave = () => {
+    setHoveredAnnotationId(null);
+    const stage = stageRef.current;
+    if (stage && !isPanning) {
+      // Restore the editor's base cursor (the cursor effect re-applies grab/
+      // crosshair states on the next tool/zoom/modifier change).
+      stage.container().style.cursor = selectedTool === 'crop' ? 'crosshair' : 'default';
     }
   };
 
@@ -919,11 +1033,17 @@ const EditorWindow: React.FC = () => {
             y={ann.y}
             width={ann.width}
             height={ann.height}
+            rotation={ann.rotation || 0}
             stroke={isSelected ? '#007bff' : ann.stroke}
             strokeWidth={isSelected ? 3 : ann.strokeWidth}
-            fill={ann.fill}
+            // Transparent fill makes the whole interior a selectable/draggable
+            // area, and a wide hit-stroke makes the border easy to grab.
+            fill={ann.fill || 'transparent'}
+            hitStrokeWidth={Math.max(ann.strokeWidth || 2, 16)}
             draggable={isDraggable}
             onClick={() => setSelectedAnnotation(ann.id)}
+            onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
+            onMouseLeave={handleAnnotationMouseLeave}
             onDragEnd={(e) => handleDragEnd(e, ann.id)}
             onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
           />
@@ -939,12 +1059,15 @@ const EditorWindow: React.FC = () => {
             y={ann.y}
             width={ann.width}
             height={ann.height}
+            rotation={ann.rotation || 0}
             fill={ann.fill}
             opacity={ann.opacity}
             stroke={isSelected ? '#007bff' : undefined}
             strokeWidth={isSelected ? 2 : 0}
             draggable={isDraggable}
             onClick={() => setSelectedAnnotation(ann.id)}
+            onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
+            onMouseLeave={handleAnnotationMouseLeave}
             onDragEnd={(e) => handleDragEnd(e, ann.id)}
             onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
           />
@@ -964,6 +1087,7 @@ const EditorWindow: React.FC = () => {
             y={ann.y}
             width={ann.width}
             height={ann.height}
+            rotation={ann.rotation || 0}
             fillPatternImage={blurPatternImage || undefined}
             fillPatternRepeat="repeat"
             fill={blurPatternImage ? undefined : '#000000'}
@@ -972,6 +1096,8 @@ const EditorWindow: React.FC = () => {
             strokeWidth={isSelected ? 2 : 0}
             draggable={isDraggable}
             onClick={() => setSelectedAnnotation(ann.id)}
+            onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
+            onMouseLeave={handleAnnotationMouseLeave}
             onDragEnd={(e) => handleDragEnd(e, ann.id)}
             onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
           />
@@ -1003,8 +1129,11 @@ const EditorWindow: React.FC = () => {
               fill={ann.stroke}
               pointerLength={10}
               pointerWidth={10}
+              hitStrokeWidth={20}
               draggable={isDraggable}
               onClick={() => setSelectedAnnotation(ann.id)}
+              onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
+              onMouseLeave={handleAnnotationMouseLeave}
               onDragEnd={(e) => handleDragEnd(e, ann.id)}
               onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
             />
@@ -1030,14 +1159,21 @@ const EditorWindow: React.FC = () => {
           return (
             <Group
               key={ann.id}
+              ref={(node) => {
+                if (node) shapeRefs.current[ann.id] = node;
+              }}
               draggable={isDraggable}
               onClick={() => setSelectedAnnotation(ann.id)}
+              onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
+              onMouseLeave={handleAnnotationMouseLeave}
               onDragEnd={(e) => handleDragEnd(e, ann.id)}
+              onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
             >
               <Line
                 points={curvedPoints}
                 stroke={isSelected ? '#007bff' : ann.stroke}
                 strokeWidth={isSelected ? 3 : ann.strokeWidth}
+                hitStrokeWidth={20}
                 lineCap="round"
                 lineJoin="round"
               />
@@ -1101,8 +1237,13 @@ const EditorWindow: React.FC = () => {
         return (
           <Group
             key={ann.id}
+            ref={(node) => {
+              if (node) shapeRefs.current[ann.id] = node;
+            }}
             draggable={isDraggable}
             onClick={() => setSelectedAnnotation(ann.id)}
+            onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
+            onMouseLeave={handleAnnotationMouseLeave}
             onDblClick={() => {
               // Double-click to edit text
               setTextInput({ x: textX + textBgPadding, y: textY + 4, fontSize: 14, annotationId: ann.id });
@@ -1110,6 +1251,7 @@ const EditorWindow: React.FC = () => {
               setTimeout(() => textInputRef.current?.focus(), 0);
             }}
             onDragEnd={(e) => handleDragEnd(e, ann.id)}
+            onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
           >
             <Arrow
               points={ann.points || []}
@@ -1118,6 +1260,7 @@ const EditorWindow: React.FC = () => {
               fill={isSelected ? '#007bff' : ann.stroke}
               pointerLength={10}
               pointerWidth={10}
+              hitStrokeWidth={20}
             />
             {/* Text at the start of arrow (opposite of arrow head) */}
             {ann.text && (
@@ -1162,9 +1305,15 @@ const EditorWindow: React.FC = () => {
         return (
           <Group
             key={ann.id}
+            ref={(node) => {
+              if (node) shapeRefs.current[ann.id] = node;
+            }}
             draggable={isDraggable}
             onClick={() => setSelectedAnnotation(ann.id)}
+            onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
+            onMouseLeave={handleAnnotationMouseLeave}
             onDragEnd={(e) => handleDragEnd(e, ann.id)}
+            onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
           >
             <Arrow
               points={ann.points || []}
@@ -1173,6 +1322,7 @@ const EditorWindow: React.FC = () => {
               fill={isSelected ? '#007bff' : ann.stroke}
               pointerLength={10}
               pointerWidth={10}
+              hitStrokeWidth={20}
             />
             <Circle
               x={endX}
@@ -1196,24 +1346,58 @@ const EditorWindow: React.FC = () => {
             />
           </Group>
         );
-      case 'text':
+      case 'text': {
+        const isEditing = editingTextId === ann.id;
+        // Show a dashed box outline while the box is empty (being drawn / before
+        // any text is typed). Once it has text it renders clean like other shapes.
+        const showBorder = !(ann.text && ann.text.trim());
+        const textPad = 4;
         return (
-          <Text
-            key={ann.id}
-            ref={(node) => {
-              if (node) shapeRefs.current[ann.id] = node;
-            }}
-            x={ann.x}
-            y={ann.y}
-            text={ann.text || ''}
-            fontSize={ann.fontSize || 16}
-            fill={isSelected ? '#007bff' : ann.fill}
-            draggable={isDraggable}
-            onClick={() => setSelectedAnnotation(ann.id)}
-            onDragEnd={(e) => handleDragEnd(e, ann.id)}
-            onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
-          />
+          <Group key={ann.id}>
+            {showBorder && (
+              <Rect
+                x={ann.x}
+                y={ann.y}
+                width={ann.width}
+                height={ann.height}
+                rotation={ann.rotation || 0}
+                stroke={isSelected || isEditing ? '#007bff' : 'rgba(120, 120, 120, 0.7)'}
+                strokeWidth={1}
+                dash={[4, 4]}
+                listening={false}
+              />
+            )}
+            {!isEditing && (
+              <Text
+                ref={(node) => {
+                  if (node) shapeRefs.current[ann.id] = node;
+                }}
+                x={ann.x}
+                y={ann.y}
+                width={ann.width}
+                height={ann.height}
+                padding={textPad}
+                wrap="word"
+                text={ann.text || ''}
+                fontSize={ann.fontSize || 16}
+                rotation={ann.rotation || 0}
+                fill={isSelected ? '#007bff' : ann.fill}
+                draggable={isDraggable}
+                onClick={() => setSelectedAnnotation(ann.id)}
+                onDblClick={() => {
+                  setSelectedAnnotation(ann.id);
+                  setEditingTextId(ann.id);
+                  setTimeout(() => textEditRef.current?.focus(), 0);
+                }}
+                onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
+                onMouseLeave={handleAnnotationMouseLeave}
+                onDragEnd={(e) => handleDragEnd(e, ann.id)}
+                onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
+              />
+            )}
+          </Group>
         );
+      }
       default:
         return null;
     }
@@ -1313,8 +1497,34 @@ const EditorWindow: React.FC = () => {
                 </Group>
               );
             })()}
+            {/* Hover bounding box: shows the selectable rectangular area when
+                hovering an annotation that isn't the currently selected one. */}
+            {hoveredAnnotationId && hoveredAnnotationId !== selectedAnnotationId && (() => {
+              const node = shapeRefs.current[hoveredAnnotationId];
+              if (!node) return null;
+              const layer = node.getLayer();
+              if (!layer) return null;
+              const box = node.getClientRect({ relativeTo: layer });
+              const pad = 6;
+              return (
+                <Rect
+                  x={box.x - pad}
+                  y={box.y - pad}
+                  width={box.width + pad * 2}
+                  height={box.height + pad * 2}
+                  stroke="#007bff"
+                  strokeWidth={1}
+                  dash={[4, 4]}
+                  fill="rgba(0, 123, 255, 0.06)"
+                  cornerRadius={3}
+                  listening={false}
+                />
+              );
+            })()}
             <Transformer
               ref={transformerRef}
+              rotateEnabled={true}
+              rotateAnchorOffset={24}
               boundBoxFunc={(oldBox, newBox) => {
                 // Limit resize
                 if (newBox.width < 5 || newBox.height < 5) {
@@ -1323,11 +1533,11 @@ const EditorWindow: React.FC = () => {
                 return newBox;
               }}
               enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
-              anchorSize={8}
+              anchorSize={12}
               anchorStroke="#007bff"
               anchorFill="#ffffff"
               anchorStrokeWidth={2}
-              anchorCornerRadius={2}
+              anchorCornerRadius={3}
               borderStroke="#007bff"
               borderStrokeWidth={2}
               borderDash={[4, 4]}
@@ -1362,9 +1572,54 @@ const EditorWindow: React.FC = () => {
             />
           </div>
         )}
+        {/* Inline text-box editor: a transparent textarea overlaid exactly on
+            the box. Typing updates the annotation live (no Enter to render);
+            committed on blur. */}
+        {editingTextId && stageRef.current && (() => {
+          const ann = annotations.find((a) => a.id === editingTextId);
+          if (!ann) return null;
+          const rect = stageRef.current.container().getBoundingClientRect();
+          const left = rect.left + (ann.x || 0) * zoom + stagePos.x;
+          const top = rect.top + (ann.y || 0) * zoom + stagePos.y;
+          const pad = 4;
+          return (
+            <textarea
+              ref={textEditRef}
+              value={ann.text || ''}
+              onChange={(e) => updateAnnotation(ann.id, { text: e.target.value })}
+              onBlur={commitTextEditing}
+              onKeyDown={handleTextEditKeyDown}
+              autoFocus
+              placeholder="Type text…"
+              style={{
+                position: 'fixed',
+                left,
+                top,
+                width: (ann.width || 0) * zoom,
+                height: (ann.height || 0) * zoom,
+                padding: pad * zoom,
+                boxSizing: 'border-box',
+                margin: 0,
+                fontFamily: 'Arial, sans-serif',
+                fontSize: (ann.fontSize || 16) * zoom,
+                lineHeight: 1,
+                color: ann.fill || '#000000',
+                background: 'transparent',
+                border: '1px dashed #007bff',
+                outline: 'none',
+                resize: 'none',
+                overflow: 'hidden',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                zIndex: 1000,
+                caretColor: ann.fill || '#000000',
+              }}
+            />
+          );
+        })()}
       </div>
       <ActionBar stageRef={stageRef} scaleRatio={scaleRatio} />
-      <ZoomBar zoom={zoom} onZoomChange={setZoom} />
+      <ZoomBar zoom={zoom} onZoomChange={setZoom} scaleRatio={scaleRatio} />
       {version && (
         <div className="version-badge">
           {version}

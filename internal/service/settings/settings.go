@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/heytonyne/grabix/internal/model"
+	"github.com/heytonyne/fasp/internal/model"
 )
 
 // serviceImpl implements the Service interface
@@ -29,10 +29,17 @@ func New() Service {
 		configDir = os.TempDir()
 	}
 
-	s.filePath = filepath.Join(configDir, "grabix", "settings.json")
+	s.filePath = filepath.Join(configDir, "fasp", "settings.json")
 
 	// Try to load existing settings
 	_ = s.Load()
+
+	// Backfill / migrate the server URL. "https://fasp.me" is the static SPA
+	// host (serves index.html for /api/*), never the API — rewrite it to the
+	// real API host. Also covers settings files written before this field.
+	if s.settings.ServerURL == "" || s.settings.ServerURL == "https://fasp.me" {
+		s.settings.ServerURL = model.DefaultSettings().ServerURL
+	}
 
 	return s
 }
@@ -57,6 +64,12 @@ func (s *serviceImpl) Get(key string) (interface{}, error) {
 		return s.settings.ActiveProvider, nil
 	case "run_at_startup":
 		return s.settings.RunAtStartup, nil
+	case "after_upload_action":
+		return s.settings.AfterUploadAction, nil
+	case "server_url":
+		return s.settings.ServerURL, nil
+	case "api_key":
+		return s.settings.APIKey, nil
 	default:
 		return nil, fmt.Errorf("unknown setting key: %s", key)
 	}
@@ -119,6 +132,18 @@ func (s *serviceImpl) Set(key string, value interface{}) error {
 		} else {
 			return fmt.Errorf("invalid type for after_upload_action")
 		}
+	case "server_url":
+		if v, ok := value.(string); ok {
+			s.settings.ServerURL = v
+		} else {
+			return fmt.Errorf("invalid type for server_url")
+		}
+	case "api_key":
+		if v, ok := value.(string); ok {
+			s.settings.APIKey = v
+		} else {
+			return fmt.Errorf("invalid type for api_key")
+		}
 	default:
 		return fmt.Errorf("unknown setting key: %s", key)
 	}
@@ -160,7 +185,8 @@ func (s *serviceImpl) Save() error {
 		return fmt.Errorf("failed to marshal settings: %w", err)
 	}
 
-	if err := os.WriteFile(s.filePath, data, 0644); err != nil {
+	// 0600: settings.json now holds the fasp API key (a secret).
+	if err := os.WriteFile(s.filePath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write settings file: %w", err)
 	}
 

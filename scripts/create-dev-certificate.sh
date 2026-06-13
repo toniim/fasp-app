@@ -4,11 +4,11 @@
 #
 # Usage: ./scripts/create-dev-certificate.sh
 #
-# After running, use: ./scripts/sign-macos.sh "Grabix Dev"
+# After running, use: ./scripts/sign-macos.sh "Fasp Dev"
 
 set -e
 
-CERT_NAME="Grabix Dev"
+CERT_NAME="Fasp Dev"
 
 echo "Creating self-signed certificate: '$CERT_NAME'"
 echo ""
@@ -26,7 +26,7 @@ cat << 'EOF'
 Opening Keychain Access to create certificate...
 
 In the Certificate Assistant:
-  1. Name: Grabix Dev
+  1. Name: Fasp Dev
   2. Identity Type: Self Signed Root
   3. Certificate Type: Code Signing
   4. Click "Create"

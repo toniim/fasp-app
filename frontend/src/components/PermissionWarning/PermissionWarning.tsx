@@ -103,8 +103,8 @@ function PermissionWarning({ onClose }: PermissionWarningProps) {
         <h2>{isScreenRecording ? 'Screen Recording Permission Required' : 'Accessibility Permission Required'}</h2>
         <p>
           {isScreenRecording
-            ? 'Grabix needs Screen Recording permission to capture screenshots of all windows and apps.'
-            : 'Grabix needs Accessibility permission to enable global keyboard shortcuts.'
+            ? 'Fasp needs Screen Recording permission to capture screenshots of all windows and apps.'
+            : 'Fasp needs Accessibility permission to enable global keyboard shortcuts.'
           }
         </p>
         <div className="permission-steps">
@@ -113,7 +113,7 @@ function PermissionWarning({ onClose }: PermissionWarningProps) {
             <li>Click "Open System Settings" below</li>
             <li>Go to <strong>Privacy & Security</strong> → <strong>{isScreenRecording ? 'Screen Recording' : 'Accessibility'}</strong></li>
             <li>Click the 🔒 lock icon and enter your password</li>
-            <li>Enable the checkbox for <strong>Grabix</strong> (or your Terminal/IDE if running in dev mode)</li>
+            <li>Enable the checkbox for <strong>Fasp</strong> (or your Terminal/IDE if running in dev mode)</li>
             <li>Restart the app</li>
           </ol>
         </div>

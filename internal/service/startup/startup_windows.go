@@ -11,7 +11,7 @@ import (
 )
 
 const registryKey = `SOFTWARE\Microsoft\Windows\CurrentVersion\Run`
-const appName = "Grabix"
+const appName = "Fasp"
 
 // serviceImpl implements the Service interface for Windows
 type serviceImpl struct {

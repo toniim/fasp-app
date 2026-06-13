@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/heytonyne/grabix/internal/model"
+	"github.com/heytonyne/fasp/internal/model"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -149,8 +149,8 @@ func (s *serviceImpl) GetDefaultSavePath() (string, error) {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	// Default to ~/Pictures/Grabix
-	defaultPath := filepath.Join(home, "Pictures", "Grabix")
+	// Default to ~/Pictures/Fasp
+	defaultPath := filepath.Join(home, "Pictures", "Fasp")
 	return defaultPath, nil
 }
 

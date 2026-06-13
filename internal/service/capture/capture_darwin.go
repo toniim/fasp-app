@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/heytonyne/grabix/internal/model"
+	"github.com/heytonyne/fasp/internal/model"
 )
 
 // serviceImpl implements the Service interface for macOS
@@ -32,7 +32,7 @@ func (s *serviceImpl) CaptureFullscreen() (*model.CaptureResult, error) {
 func (s *serviceImpl) CaptureActiveDisplay() (*model.CaptureResult, error) {
 	// Create temp file
 	tmpDir := os.TempDir()
-	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("grabix_capture_%d.png", time.Now().UnixNano()))
+	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("fasp_capture_%d.png", time.Now().UnixNano()))
 	defer os.Remove(tmpFile)
 
 	// Use macOS screencapture command

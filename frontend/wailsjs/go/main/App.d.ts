@@ -4,16 +4,6 @@ import {model} from '../models';
 import {version} from '../models';
 import {upload} from '../models';
 
-export function AuthGetCurrentUser():Promise<model.User>;
-
-export function AuthHandleCallback(arg1:string):Promise<model.User>;
-
-export function AuthIsLoggedIn():Promise<boolean>;
-
-export function AuthLogout():Promise<void>;
-
-export function AuthStartLogin():Promise<string>;
-
 export function CaptureActiveDisplay():Promise<model.CaptureResult>;
 
 export function CaptureFullscreen():Promise<model.CaptureResult>;
@@ -49,6 +39,8 @@ export function RequestScreenRecordingPermission():Promise<void>;
 export function ResumeHotkeys():Promise<void>;
 
 export function SaveImage(arg1:model.SaveOptions,arg2:Array<number>):Promise<void>;
+
+export function TestUploadConnection():Promise<void>;
 
 export function UpdateSetting(arg1:string,arg2:any):Promise<void>;
 

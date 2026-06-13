@@ -34,7 +34,7 @@ func New() Service {
 	}
 
 	return &serviceImpl{
-		appName: "Grabix",
+		appName: "Fasp",
 		appPath: appPath,
 	}
 }

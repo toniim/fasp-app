@@ -58,13 +58,31 @@ class UploadService {
         if (xhr.status === 200 || xhr.status === 204) {
           resolve();
         } else {
-          reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.responseText}`));
+          console.error('[upload] R2 PUT rejected', {
+            status: xhr.status,
+            statusText: xhr.statusText,
+            responseText: xhr.responseText,
+            uploadURL,
+          });
+          reject(new Error(`R2 PUT failed (HTTP ${xhr.status} ${xhr.statusText}): ${xhr.responseText || 'no body'}`));
         }
       });
 
-      // Handle errors
+      // Handle errors — network/CORS failures give no status, so log what we can
       xhr.addEventListener('error', () => {
-        reject(new Error('Upload failed'));
+        console.error('[upload] R2 PUT network/CORS error', {
+          status: xhr.status,
+          statusText: xhr.statusText,
+          uploadURL,
+        });
+        reject(new Error(
+          `R2 PUT network error (likely CORS or unreachable host). status=${xhr.status} ${xhr.statusText}. URL host=${(() => { try { return new URL(uploadURL).host; } catch { return uploadURL; } })()}`
+        ));
+      });
+
+      xhr.addEventListener('timeout', () => {
+        console.error('[upload] R2 PUT timeout', { uploadURL });
+        reject(new Error('R2 PUT timed out'));
       });
 
       xhr.addEventListener('abort', () => {
@@ -113,13 +131,34 @@ class UploadService {
     onProgress?: (progress: UploadProgress) => void
   ): Promise<CompleteResponse> {
     // Step 1: Initialize upload
-    const initResp = await this.init(filename, data.size, contentType);
+    console.log('[upload] init', { filename, size: data.size, contentType });
+    let initResp: InitResponse;
+    try {
+      initResp = await this.init(filename, data.size, contentType);
+    } catch (error) {
+      console.error('[upload] init step failed:', error);
+      throw new Error(`Init failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    console.log('[upload] init ok', { file_id: initResp.file_id });
 
-    // Step 2: Upload file
-    await this.putFile(initResp.upload_url, data, contentType, onProgress);
+    // Step 2: Upload file to presigned R2 URL
+    try {
+      await this.putFile(initResp.upload_url, data, contentType, onProgress);
+    } catch (error) {
+      console.error('[upload] PUT step failed:', error);
+      throw error; // putFile already produces a descriptive message
+    }
+    console.log('[upload] PUT ok');
 
     // Step 3: Complete upload
-    const completeResp = await this.complete(initResp.file_id);
+    let completeResp: CompleteResponse;
+    try {
+      completeResp = await this.complete(initResp.file_id);
+    } catch (error) {
+      console.error('[upload] complete step failed:', error);
+      throw new Error(`Complete failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    console.log('[upload] complete ok', completeResp);
 
     return completeResp;
   }

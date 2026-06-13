@@ -17,7 +17,7 @@ Build for both ARM64 (Apple Silicon) and AMD64 (Intel):
 ./scripts/build.sh
 ```
 
-Output: `build/bin/grabix.app`
+Output: `build/bin/fasp.app`
 
 ### Platform-Specific Builds
 
@@ -56,9 +56,9 @@ BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
 
 # Build
 wails build -platform darwin/universal -ldflags "\
-  -X 'github.com/heytonyne/grabix/internal/version.Version=${VERSION}' \
-  -X 'github.com/heytonyne/grabix/internal/version.BuildTime=${BUILD_TIME}' \
-  -X 'github.com/heytonyne/grabix/internal/version.GitCommit=${GIT_COMMIT}' \
+  -X 'github.com/heytonyne/fasp/internal/version.Version=${VERSION}' \
+  -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
+  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}' \
 "
 ```
 
@@ -67,7 +67,7 @@ wails build -platform darwin/universal -ldflags "\
 Check the architecture of the built binary:
 
 ```bash
-file build/bin/grabix.app/Contents/MacOS/grabix
+file build/bin/fasp.app/Contents/MacOS/fasp
 ```
 
 Expected outputs:
@@ -105,7 +105,7 @@ wails build -debug
 
 **Production build with all flags**:
 ```bash
-wails build -clean -platform darwin/universal -ldflags "-X 'github.com/heytonyne/grabix/internal/version.Version=v2025.12.0'"
+wails build -clean -platform darwin/universal -ldflags "-X 'github.com/heytonyne/fasp/internal/version.Version=v2025.12.0'"
 ```
 
 ## Troubleshooting
@@ -157,25 +157,25 @@ brew install create-dmg
 
 # Create DMG
 create-dmg \
-  --volname "Grabix" \
+  --volname "Fasp" \
   --window-pos 200 120 \
   --window-size 800 400 \
   --icon-size 100 \
-  --icon "grabix.app" 200 190 \
-  --hide-extension "grabix.app" \
+  --icon "fasp.app" 200 190 \
+  --hide-extension "fasp.app" \
   --app-drop-link 600 185 \
-  "Grabix-${VERSION}.dmg" \
-  "build/bin/grabix.app"
+  "Fasp-${VERSION}.dmg" \
+  "build/bin/fasp.app"
 ```
 
 ### Code Signing (macOS)
 
 ```bash
 # Sign the app
-codesign --deep --force --verify --verbose --sign "Developer ID Application: Your Name" build/bin/grabix.app
+codesign --deep --force --verify --verbose --sign "Developer ID Application: Your Name" build/bin/fasp.app
 
 # Verify signature
-codesign --verify --verbose build/bin/grabix.app
+codesign --verify --verbose build/bin/fasp.app
 ```
 
 ### Notarization (macOS)
@@ -184,12 +184,12 @@ Required for distribution outside the Mac App Store:
 
 ```bash
 # Create zip for notarization
-ditto -c -k --keepParent build/bin/grabix.app grabix.zip
+ditto -c -k --keepParent build/bin/fasp.app fasp.zip
 
 # Submit for notarization
-xcrun notarytool submit grabix.zip --apple-id "your@email.com" --team-id "TEAMID" --password "app-specific-password"
+xcrun notarytool submit fasp.zip --apple-id "your@email.com" --team-id "TEAMID" --password "app-specific-password"
 
 # Staple the notarization ticket
-xcrun stapler staple build/bin/grabix.app
+xcrun stapler staple build/bin/fasp.app
 ```
 

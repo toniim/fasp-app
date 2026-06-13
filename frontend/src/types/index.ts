@@ -40,6 +40,8 @@ export interface Settings {
   active_provider?: string;
   run_at_startup?: boolean;
   after_upload_action?: AfterUploadAction;
+  server_url?: string;
+  api_key?: string;
   defaultSaveLocation?: string; // Alias for compatibility
   defaultFormat?: string; // Alias for compatibility
 }
@@ -69,6 +71,7 @@ export interface Annotation {
   stroke?: string;
   strokeWidth?: number;
   opacity?: number;
+  rotation?: number; // degrees, applied to box-based annotations
   // For curved arrows
   curvature?: number; // 0 = straight, positive = curve right, negative = curve left
   // For numbered arrows

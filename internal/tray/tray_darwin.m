@@ -48,11 +48,11 @@ static TrayDelegate *delegate = nil;
 static void create_status_item(void) {
     @autoreleasepool {
         if (statusItem != nil) {
-            NSLog(@"[Grabix] Tray already initialized");
+            NSLog(@"[Fasp] Tray already initialized");
             return;
         }
 
-        NSLog(@"[Grabix] Creating status item after app launch...");
+        NSLog(@"[Fasp] Creating status item after app launch...");
 
         // Create delegate
         if (delegate == nil) {
@@ -65,19 +65,19 @@ static void create_status_item(void) {
         statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
 
         if (statusItem == nil) {
-            NSLog(@"[Grabix] ERROR: Failed to create status item!");
+            NSLog(@"[Fasp] ERROR: Failed to create status item!");
             return;
         }
 
         // Retain status item to prevent deallocation
         CFRetain((__bridge CFTypeRef)statusItem);
 
-        NSLog(@"[Grabix] Status item created: %@", statusItem);
+        NSLog(@"[Fasp] Status item created: %@", statusItem);
 
         // Set temporary emoji until icon is loaded from file
         statusItem.button.title = @"📸";
 
-        NSLog(@"[Grabix] Status item initialized");
+        NSLog(@"[Fasp] Status item initialized");
 
         // Create menu
         NSMenu *menu = [[NSMenu alloc] init];
@@ -126,7 +126,7 @@ static void create_status_item(void) {
 
         statusItem.menu = menu;
 
-        NSLog(@"[Grabix] Tray icon created successfully!");
+        NSLog(@"[Fasp] Tray icon created successfully!");
     }
 }
 
@@ -140,7 +140,7 @@ void tray_init(void) {
     }
 
     @autoreleasepool {
-        NSLog(@"[Grabix] Scheduling tray creation after app launch...");
+        NSLog(@"[Fasp] Scheduling tray creation after app launch...");
 
         // Defer tray creation until after NSApplication finishes launching
         // Use dispatch_after with 300ms delay to ensure app is fully initialized
@@ -154,12 +154,12 @@ void tray_init(void) {
 void tray_set_icon_internal(NSString *iconPath) {
     @autoreleasepool {
         if (statusItem == nil) {
-            NSLog(@"[Grabix] Cannot set icon: status item not initialized");
+            NSLog(@"[Fasp] Cannot set icon: status item not initialized");
             return;
         }
 
         if (iconPath == nil) {
-            NSLog(@"[Grabix] Icon path is nil");
+            NSLog(@"[Fasp] Icon path is nil");
             return;
         }
 
@@ -171,30 +171,30 @@ void tray_set_icon_internal(NSString *iconPath) {
 
         if (bundlePath != nil) {
             path = bundlePath;
-            NSLog(@"[Grabix] Found icon in bundle: %@", path);
+            NSLog(@"[Fasp] Found icon in bundle: %@", path);
         } else {
             // Fallback to absolute path
             path = iconPath;
-            NSLog(@"[Grabix] Using path as-is: %@", path);
+            NSLog(@"[Fasp] Using path as-is: %@", path);
         }
 
         // Check if file exists
         NSFileManager *fileManager = [NSFileManager defaultManager];
         if (![fileManager fileExistsAtPath:path]) {
-            NSLog(@"[Grabix] Icon file does not exist at path: %@", path);
-            NSLog(@"[Grabix] Bundle path: %@", [mainBundle bundlePath]);
-            NSLog(@"[Grabix] Resources path: %@", [mainBundle resourcePath]);
+            NSLog(@"[Fasp] Icon file does not exist at path: %@", path);
+            NSLog(@"[Fasp] Bundle path: %@", [mainBundle bundlePath]);
+            NSLog(@"[Fasp] Resources path: %@", [mainBundle resourcePath]);
             return;
         }
 
         NSImage *image = [[NSImage alloc] initWithContentsOfFile:path];
 
         if (image == nil) {
-            NSLog(@"[Grabix] Failed to load icon image from: %@", path);
+            NSLog(@"[Fasp] Failed to load icon image from: %@", path);
             return;
         }
 
-        NSLog(@"[Grabix] Icon loaded successfully, original size: %.0fx%.0f", image.size.width, image.size.height);
+        NSLog(@"[Fasp] Icon loaded successfully, original size: %.0fx%.0f", image.size.width, image.size.height);
 
         // Resize image to fit menu bar (18x18 points for standard, 36x36 for retina)
         NSSize iconSize = NSMakeSize(18.0, 18.0);
@@ -214,19 +214,19 @@ void tray_set_icon_internal(NSString *iconPath) {
         statusItem.button.image = resizedImage;
         statusItem.button.title = @""; // Clear title when using image
 
-        NSLog(@"[Grabix] Tray icon set successfully from: %@", path);
+        NSLog(@"[Fasp] Tray icon set successfully from: %@", path);
     }
 }
 
 void tray_set_icon(const char *icon_path) {
     if (icon_path == NULL) {
-        NSLog(@"[Grabix] Icon path is NULL");
+        NSLog(@"[Fasp] Icon path is NULL");
         return;
     }
 
     NSString *iconPathString = [[NSString alloc] initWithUTF8String:icon_path];
     if (iconPathString == nil) {
-        NSLog(@"[Grabix] Failed to convert icon path to NSString");
+        NSLog(@"[Fasp] Failed to convert icon path to NSString");
         return;
     }
 

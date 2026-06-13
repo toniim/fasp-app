@@ -1,4 +1,4 @@
-# Code Standards & Conventions - Grabix
+# Code Standards & Conventions - Fasp
 
 ## 1. Go Backend Standards
 
@@ -20,7 +20,7 @@
       "github.com/wailsapp/wails/v2"
       "golang.design/x/hotkey"
 
-      "github.com/heytonyne/grabix/internal/model"
+      "github.com/heytonyne/fasp/internal/model"
   )
   ```
 

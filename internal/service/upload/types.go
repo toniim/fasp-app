@@ -5,6 +5,8 @@ type InitRequest struct {
 	Filename string `json:"filename"`
 	Size     int64  `json:"size"`
 	MimeType string `json:"mime_type"`
+	// IsPublic marks the file public so the server returns shareable URLs.
+	IsPublic bool `json:"is_public"`
 }
 
 // InitResponse represents the response from upload initialization

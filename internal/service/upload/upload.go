@@ -6,41 +6,62 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
+	"strings"
 	"time"
 
-	"github.com/heytonyne/grabix/internal/model"
-	"github.com/heytonyne/grabix/internal/service/auth"
+	"github.com/heytonyne/fasp/internal/model"
+	"github.com/heytonyne/fasp/internal/service/settings"
 )
 
-// uploadService implements the Service interface
+// uploadService implements the Service interface.
+//
+// It talks to a fasp server using the 3-step upload flow
+// (init -> presigned R2 PUT -> complete) and authorizes every request with a
+// fasp API key (fsk_live_*) via the `Authorization: Bearer` header. The server
+// URL and API key are read live from the settings service on each call so the
+// user can change them at runtime without restarting the app.
 type uploadService struct {
-	apiHost     string
-	authService auth.Service
+	settings settings.Service
 }
 
-// New creates a new upload service instance
-func New() Service {
-	return &uploadService{
-		apiHost:     os.Getenv("API_HOST"),
-		authService: auth.New(),
+// New creates a new upload service instance backed by the settings service.
+func New(settingsSvc settings.Service) Service {
+	return &uploadService{settings: settingsSvc}
+}
+
+// credentials returns the configured server base URL and API key.
+func (s *uploadService) credentials() (string, string, error) {
+	cfg, err := s.settings.GetAll()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read settings: %w", err)
 	}
+
+	serverURL := strings.TrimRight(strings.TrimSpace(cfg.ServerURL), "/")
+	apiKey := strings.TrimSpace(cfg.APIKey)
+
+	if serverURL == "" {
+		return "", "", fmt.Errorf("server URL not configured")
+	}
+	if apiKey == "" {
+		return "", "", fmt.Errorf("API key not configured")
+	}
+	return serverURL, apiKey, nil
 }
 
-// Upload uploads image data to the configured provider (legacy method)
+// Upload uploads image data using the full 3-step flow.
 func (s *uploadService) Upload(data []byte, filename string) (*model.UploadResult, error) {
-	// Use new 3-step flow
 	initResp, err := s.Init(filename, int64(len(data)), "image/png")
 	if err != nil {
 		return nil, err
 	}
 
-	// PUT file directly
+	// PUT raw bytes directly to the presigned R2 URL (no auth header needed).
 	req, err := http.NewRequest("PUT", initResp.UploadURL, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PUT request: %w", err)
 	}
 	req.Header.Set("Content-Type", "image/png")
+	req.ContentLength = int64(len(data))
 
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
@@ -54,7 +75,6 @@ func (s *uploadService) Upload(data []byte, filename string) (*model.UploadResul
 		return nil, fmt.Errorf("upload failed: %s - %s", resp.Status, string(body))
 	}
 
-	// Complete upload
 	completeResp, err := s.Complete(initResp.FileID)
 	if err != nil {
 		return nil, err
@@ -67,23 +87,18 @@ func (s *uploadService) Upload(data []byte, filename string) (*model.UploadResul
 	}, nil
 }
 
-// Init initiates a file upload and returns upload URL
+// Init initiates a file upload and returns a presigned upload URL.
 func (s *uploadService) Init(filename string, size int64, contentType string) (*InitResponse, error) {
-	if s.apiHost == "" {
-		return nil, fmt.Errorf("API_HOST not configured")
-	}
-
-	// Get access token
-	accessToken, err := s.authService.GetAccessToken()
+	serverURL, apiKey, err := s.credentials()
 	if err != nil {
-		return nil, fmt.Errorf("not authenticated: %w", err)
+		return nil, err
 	}
 
-	// Create init request
 	initReq := InitRequest{
-		Filename:    filename,
-		Size:        size,
+		Filename: filename,
+		Size:     size,
 		MimeType: contentType,
+		IsPublic: true,
 	}
 
 	jsonData, err := json.Marshal(initReq)
@@ -91,14 +106,12 @@ func (s *uploadService) Init(filename string, size int64, contentType string) (*
 		return nil, fmt.Errorf("failed to marshal init request: %w", err)
 	}
 
-	// Send POST request to init endpoint
-	req, err := http.NewRequest("POST", s.apiHost+"/api/upload/init", bytes.NewReader(jsonData))
+	req, err := http.NewRequest("POST", serverURL+"/api/upload/init", bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create init request: %w", err)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -118,42 +131,50 @@ func (s *uploadService) Init(filename string, size int64, contentType string) (*
 
 	var initResp InitResponse
 	if err := json.Unmarshal(body, &initResp); err != nil {
-		return nil, fmt.Errorf("failed to parse init response: %w", err)
+		return nil, fmt.Errorf(
+			"init response was not JSON (status %s, content-type %q, final-url %s): %s",
+			resp.Status, resp.Header.Get("Content-Type"), resp.Request.URL.String(), bodySnippet(body),
+		)
 	}
 
 	return &initResp, nil
 }
 
-// Complete completes a file upload and returns public URLs
+// bodySnippet returns a single-line, truncated view of a response body for
+// diagnostics (avoids dumping a full HTML page into the error).
+func bodySnippet(body []byte) string {
+	const max = 300
+	s := strings.TrimSpace(string(body))
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > max {
+		s = s[:max] + "…"
+	}
+	if s == "" {
+		return "(empty body)"
+	}
+	return s
+}
+
+// Complete completes a file upload and returns public URLs.
 func (s *uploadService) Complete(fileID string) (*CompleteResponse, error) {
-	if s.apiHost == "" {
-		return nil, fmt.Errorf("API_HOST not configured")
-	}
-
-	// Get access token
-	accessToken, err := s.authService.GetAccessToken()
+	serverURL, apiKey, err := s.credentials()
 	if err != nil {
-		return nil, fmt.Errorf("not authenticated: %w", err)
+		return nil, err
 	}
 
-	// Create complete request
-	completeReq := CompleteRequest{
-		FileID: fileID,
-	}
+	completeReq := CompleteRequest{FileID: fileID}
 
 	jsonData, err := json.Marshal(completeReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal complete request: %w", err)
 	}
 
-	// Send POST request to complete endpoint
-	req, err := http.NewRequest("POST", s.apiHost+"/api/upload/complete", bytes.NewReader(jsonData))
+	req, err := http.NewRequest("POST", serverURL+"/api/upload/complete", bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create complete request: %w", err)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -173,28 +194,49 @@ func (s *uploadService) Complete(fileID string) (*CompleteResponse, error) {
 
 	var completeResp CompleteResponse
 	if err := json.Unmarshal(body, &completeResp); err != nil {
-		return nil, fmt.Errorf("failed to parse complete response: %w", err)
+		return nil, fmt.Errorf(
+			"complete response was not JSON (status %s, content-type %q, final-url %s): %s",
+			resp.Status, resp.Header.Get("Content-Type"), resp.Request.URL.String(), bodySnippet(body),
+		)
 	}
 
 	return &completeResp, nil
 }
 
-// IsConfigured checks if upload service is properly configured
+// IsConfigured reports whether a server URL and API key are set.
 func (s *uploadService) IsConfigured() bool {
-	return s.apiHost != "" && s.authService.IsLoggedIn()
+	_, _, err := s.credentials()
+	return err == nil
 }
 
-// GetProviders returns a list of available upload providers (legacy method)
-func (s *uploadService) GetProviders() []string {
-	return []string{"api"}
-}
+// TestConnection verifies the configured server URL + API key are valid by
+// hitting an authenticated read endpoint (files:read scope).
+func (s *uploadService) TestConnection() error {
+	serverURL, apiKey, err := s.credentials()
+	if err != nil {
+		return err
+	}
 
-// SetProvider sets the active upload provider (legacy method)
-func (s *uploadService) SetProvider(name string) error {
-	return nil
-}
+	req, err := http.NewRequest("GET", serverURL+"/api/files?limit=1", nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-// GetActiveProvider returns the currently active provider (legacy method)
-func (s *uploadService) GetActiveProvider() string {
-	return "api"
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to reach server: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		return nil
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return fmt.Errorf("invalid API key")
+	default:
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected response: %s - %s", resp.Status, string(body))
+	}
 }

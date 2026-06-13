@@ -102,6 +102,8 @@ export namespace model {
 	    active_provider: string;
 	    run_at_startup: boolean;
 	    after_upload_action: string;
+	    server_url: string;
+	    api_key: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -117,6 +119,8 @@ export namespace model {
 	        this.active_provider = source["active_provider"];
 	        this.run_at_startup = source["run_at_startup"];
 	        this.after_upload_action = source["after_upload_action"];
+	        this.server_url = source["server_url"];
+	        this.api_key = source["api_key"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -136,27 +140,6 @@ export namespace model {
 		    }
 		    return a;
 		}
-	}
-	
-	export class User {
-	    id: string;
-	    email: string;
-	    name: string;
-	    picture: string;
-	    username: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new User(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.email = source["email"];
-	        this.name = source["name"];
-	        this.picture = source["picture"];
-	        this.username = source["username"];
-	    }
 	}
 
 }

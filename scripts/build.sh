@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Build script for Grabix with version info
+# Build script for Fasp with version info
 # Usage: ./scripts/build.sh [platform]
 #   platform: darwin/arm64, darwin/amd64, darwin/universal (default)
 
@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Get platform from argument or default to universal
 PLATFORM="${1:-darwin/universal}"
 
-echo -e "${GREEN}Building Grabix for ${PLATFORM}...${NC}"
+echo -e "${GREEN}Building Fasp for ${PLATFORM}...${NC}"
 
 # Get version from version.go
 VERSION=$(grep 'Version = ' internal/version/version.go | sed 's/.*"\(.*\)".*/\1/')
@@ -37,17 +37,17 @@ echo -e "${YELLOW}Build Time: ${BUILD_TIME}${NC}"
 # Build with wails
 echo -e "${GREEN}Running wails build...${NC}"
 wails build -platform "${PLATFORM}" -ldflags "\
-  -X 'github.com/heytonyne/grabix/internal/version.Version=${VERSION}' \
-  -X 'github.com/heytonyne/grabix/internal/version.BuildTime=${BUILD_TIME}' \
-  -X 'github.com/heytonyne/grabix/internal/version.GitCommit=${GIT_COMMIT}' \
+  -X 'github.com/heytonyne/fasp/internal/version.Version=${VERSION}' \
+  -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
+  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}' \
 "
 
 echo -e "${GREEN}Build complete!${NC}"
-echo -e "${YELLOW}Binary location: build/bin/grabix.app${NC}"
+echo -e "${YELLOW}Binary location: build/bin/fasp.app${NC}"
 
 # Show architecture info
-if [ -f "build/bin/grabix.app/Contents/MacOS/grabix" ]; then
+if [ -f "build/bin/fasp.app/Contents/MacOS/fasp" ]; then
     echo -e "${YELLOW}Architecture:${NC}"
-    file build/bin/grabix.app/Contents/MacOS/grabix
+    file build/bin/fasp.app/Contents/MacOS/fasp
 fi
 

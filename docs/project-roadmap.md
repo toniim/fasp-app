@@ -1,4 +1,4 @@
-# Grabix Development Roadmap
+# Fasp Development Roadmap
 
 **Last Updated**: 2025-02-01
 **Current Status**: Phase 1 MVP Complete
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Grabix has successfully completed Phase 1 MVP with core screenshot, annotation, save, and hotkey features. Phase 2 focuses on refinement, extensibility, and distribution preparation. Phase 3 targets production hardening and auto-update infrastructure.
+Fasp has successfully completed Phase 1 MVP with core screenshot, annotation, save, and hotkey features. Phase 2 focuses on refinement, extensibility, and distribution preparation. Phase 3 targets production hardening and auto-update infrastructure.
 
 **Timeline**:
 - Phase 1: ✅ Complete (4 weeks)
@@ -283,11 +283,11 @@ Grabix has successfully completed Phase 1 MVP with core screenshot, annotation, 
 1. Acquire Apple Developer ID certificate ($99/year)
 2. Code sign app bundle: `codesign --deep -s "Developer ID"`
 3. Create notarization ticket: `altool --notarize-app`
-4. Staple notarization: `stapler staple grabix.app`
+4. Staple notarization: `stapler staple fasp.app`
 
 **Windows**:
 1. Optional: Acquire Authenticode certificate
-2. Sign executable: `signtool sign /f cert.pfx grabix.exe`
+2. Sign executable: `signtool sign /f cert.pfx fasp.exe`
 
 **Success Criteria**:
 - macOS: Gatekeeper accepts app without warnings

@@ -6,13 +6,16 @@ import { ClipboardSetText } from '../../../wailsjs/runtime/runtime';
 import { AfterUploadAction } from '../../types';
 
 interface UploadButtonProps {
-  imageData: string; // Base64 image data
+  // Lazily produces the PNG data URL (image + latest annotations) at click time.
+  getImageData: () => string;
+  hasImage: boolean;
   onComplete?: (publicUrl: string, directUrl: string) => void;
   onError?: (error: string) => void;
 }
 
 export const UploadButton: React.FC<UploadButtonProps> = ({
-  imageData,
+  getImageData,
+  hasImage,
   onComplete,
   onError,
 }) => {
@@ -65,6 +68,8 @@ export const UploadButton: React.FC<UploadButtonProps> = ({
   };
 
   const handleUpload = async () => {
+    // Export now so the upload includes any annotations added since load.
+    const imageData = getImageData();
     if (!imageData) {
       onError?.('No image data to upload');
       return;
@@ -99,7 +104,7 @@ export const UploadButton: React.FC<UploadButtonProps> = ({
   return (
     <button
       onClick={handleUpload}
-      disabled={isUploading || !imageData}
+      disabled={isUploading || !hasImage}
       style={{
         padding: '8px 16px',
         background: isUploading ? '#666' : '#0066ff',

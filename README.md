@@ -1,6 +1,6 @@
-# Grabix - Cross-Platform Screenshot & Annotation Tool
+# Fasp - Cross-Platform Screenshot & Annotation Tool
 
-Grabix is a lightweight, fast desktop screenshot and annotation tool for macOS and Windows. Capture, annotate with shapes/arrows/text, and save or share in seconds.
+Fasp is a lightweight, fast desktop screenshot and annotation tool for macOS and Windows. Capture, annotate with shapes/arrows/text, and save or share in seconds.
 
 ## Features
 
@@ -29,13 +29,13 @@ Grabix is a lightweight, fast desktop screenshot and annotation tool for macOS a
 
 **macOS** (via release):
 ```bash
-curl -L https://github.com/heytonyne/grabix/releases/latest/download/grabix.dmg -o grabix.dmg
+curl -L https://github.com/heytonyne/fasp/releases/latest/download/fasp.dmg -o fasp.dmg
 # Mount and drag to Applications
 ```
 
 **Windows** (via release):
 ```bash
-# Download grabix-setup.exe from releases
+# Download fasp-setup.exe from releases
 # Run installer
 ```
 
@@ -43,8 +43,8 @@ curl -L https://github.com/heytonyne/grabix/releases/latest/download/grabix.dmg 
 
 ```bash
 # Clone repository
-git clone https://github.com/heytonyne/grabix.git
-cd grabix
+git clone https://github.com/heytonyne/fasp.git
+cd fasp
 
 # Install dependencies
 go mod download
@@ -82,7 +82,7 @@ make fmt
 ## Project Structure
 
 ```
-grabix/
+fasp/
 ├── main.go                    # Wails app entry, API bindings
 ├── go.mod / go.sum            # Go dependencies
 ├── wails.json                 # Wails configuration
@@ -169,7 +169,7 @@ grabix/
 - JPEG (lossy, smaller files)
 - WebP (modern compression)
 
-**Settings** (`~/.grabix/settings.json`):
+**Settings** (`~/.fasp/settings.json`):
 - Hotkey bindings
 - Default save path
 - Image format preferences
@@ -179,7 +179,7 @@ grabix/
 
 **macOS - "Permission Denied" for Screen Recording**:
 - Settings → Privacy & Security → Screen Recording
-- Add Grabix to allowed apps
+- Add Fasp to allowed apps
 
 **macOS - Tray icon not visible**:
 - Restart the app or log out/in

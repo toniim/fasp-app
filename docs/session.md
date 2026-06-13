@@ -1,7 +1,7 @@
 # Session Summary - 2025-12-20
 
 ## Overview
-This session focused on implementing UI improvements, new annotation features, and system tray integration for Grabix screenshot application.
+This session focused on implementing UI improvements, new annotation features, and system tray integration for Fasp screenshot application.
 
 ## Features Implemented
 
@@ -99,7 +99,7 @@ This session focused on implementing UI improvements, new annotation features, a
 - Renamed existing save: `💾 Save As` (secondary button)
 - Quick Save workflow:
   - Get `default_save_path` from settings
-  - Fallback: `/Users/Shared/Grabix`
+  - Fallback: `/Users/Shared/Fasp`
   - Auto-generate filename: `screenshot_YYYY-MM-DD_HH-MM-SS.png`
   - Save directly without dialog
   - Toast: "Saved to {filename}"
@@ -179,7 +179,7 @@ ld: 2 duplicate symbols
 ### Challenge 3: Process.env Not Available in Browser
 **Problem**: TypeScript error when using `process.env.HOME` in frontend.
 
-**Solution**: Use fallback path `/Users/Shared/Grabix` instead of environment variables.
+**Solution**: Use fallback path `/Users/Shared/Fasp` instead of environment variables.
 
 ### Challenge 4: Title Bar Missing
 **Problem**: `TitleBarHiddenInset()` removed ability to drag window.
@@ -191,7 +191,7 @@ ld: 2 duplicate symbols
 ### User Journey
 1. **Start App**
    - App starts hidden
-   - Menu bar shows "Grabix" with File/Window menus
+   - Menu bar shows "Fasp" with File/Window menus
    - Dock icon visible (macOS)
 
 2. **Capture Screenshot**

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { GetSettings, UpdateSetting, PauseHotkeys, ResumeHotkeys } from '../../../wailsjs/go/main/App';
+import { GetSettings, UpdateSetting, PauseHotkeys, ResumeHotkeys, TestUploadConnection } from '../../../wailsjs/go/main/App';
 import { Settings } from '../../types';
-import { AuthSection } from '../AuthSection/AuthSection';
 import './SettingsWindow.css';
+
+type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 
 interface SettingsWindowProps {
   onClose: () => void;
@@ -14,6 +15,8 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showKeyPicker, setShowKeyPicker] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
+  const [connectionMessage, setConnectionMessage] = useState('');
 
   useEffect(() => {
     loadSettings();
@@ -63,6 +66,7 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
     ];
 
     // Add the main key (not modifier keys)
+    let hasMainKey = false;
     if (!['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) {
       // Normalize key name
       let keyName = e.key;
@@ -71,13 +75,18 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
       if (keyName === 'Print') keyName = 'PrintScreen';
 
       keys.push(keyName);
+      hasMainKey = true;
     }
 
+    // While only modifiers are held (e.g. Ctrl+Shift), keep recording so the
+    // user can still press the actual key (e.g. Ctrl+Shift+D). Do NOT commit yet.
+    if (!hasMainKey) return;
+
     // Accept if:
-    // 1. Has modifiers + key (keys.length > 1)
+    // 1. Has at least one modifier + main key (keys.length > 1)
     // 2. OR is a special key that can be used alone
     const mainKey = keys[keys.length - 1];
-    const isSpecialKey = mainKey && specialKeys.includes(mainKey);
+    const isSpecialKey = specialKeys.includes(mainKey);
 
     if (keys.length > 1 || isSpecialKey) {
       setCaptureShortcut(keys.join('+'));
@@ -146,6 +155,10 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
         await UpdateSetting('after_upload_action', settings.after_upload_action);
       }
 
+      // Update server URL + API key
+      await UpdateSetting('server_url', settings.server_url || '');
+      await UpdateSetting('api_key', settings.api_key || '');
+
       alert('Settings saved successfully!');
       onClose();
     } catch (error) {
@@ -153,6 +166,23 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
       alert('Failed to save settings');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    if (!settings) return;
+    setConnectionStatus('testing');
+    setConnectionMessage('');
+    try {
+      // Persist current values first — the backend reads them from settings.
+      await UpdateSetting('server_url', settings.server_url || '');
+      await UpdateSetting('api_key', settings.api_key || '');
+      await TestUploadConnection();
+      setConnectionStatus('success');
+      setConnectionMessage('Connected — API key is valid.');
+    } catch (err) {
+      setConnectionStatus('error');
+      setConnectionMessage(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -260,8 +290,64 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
         </div>
 
         <div className="settings-section">
-          <h3>Account</h3>
-          <AuthSection />
+          <h3>Account &amp; Server</h3>
+
+          <div className="settings-table">
+            <div className="setting-row">
+              <label className="setting-label">Server URL</label>
+              <div className="setting-input">
+                <input
+                  type="text"
+                  value={settings.server_url ?? ''}
+                  onChange={(e) => {
+                    setSettings({ ...settings, server_url: e.target.value });
+                    setConnectionStatus('idle');
+                  }}
+                  placeholder="https://api.fasp.me"
+                />
+              </div>
+            </div>
+
+            <div className="setting-row">
+              <label className="setting-label">API Key</label>
+              <div className="setting-input">
+                <input
+                  type="password"
+                  value={settings.api_key ?? ''}
+                  onChange={(e) => {
+                    setSettings({ ...settings, api_key: e.target.value });
+                    setConnectionStatus('idle');
+                  }}
+                  placeholder="fsk_live_..."
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <p className="setting-hint">
+                  Create an API key in fasp under Settings → API Keys (scope files:write).
+                </p>
+              </div>
+            </div>
+
+            <div className="setting-row">
+              <label className="setting-label">Connection</label>
+              <div className="setting-input">
+                <button
+                  type="button"
+                  className="btn-test-connection"
+                  onClick={handleTestConnection}
+                  disabled={connectionStatus === 'testing' || !settings.api_key}
+                >
+                  {connectionStatus === 'testing' ? 'Testing…' : 'Test Connection'}
+                </button>
+                {connectionStatus === 'success' && (
+                  <p className="setting-hint" style={{ color: '#22c55e' }}>{connectionMessage}</p>
+                )}
+                {connectionStatus === 'error' && (
+                  <p className="setting-hint" style={{ color: '#ef4444' }}>{connectionMessage}</p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="settings-section">

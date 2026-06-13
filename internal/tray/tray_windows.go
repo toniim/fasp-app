@@ -37,8 +37,8 @@ func (m *windowsManager) onReady() {
 		systray.SetIcon(m.iconData)
 	}
 
-	systray.SetTitle("Grabix")
-	systray.SetTooltip("Grabix - Screenshot Tool")
+	systray.SetTitle("Fasp")
+	systray.SetTooltip("Fasp - Screenshot Tool")
 
 	// Create menu items
 	mCapture := systray.AddMenuItem("Capture Screenshot", "Take a screenshot")
@@ -49,7 +49,7 @@ func (m *windowsManager) onReady() {
 	systray.AddSeparator()
 	mSettings := systray.AddMenuItem("Settings...", "Open settings")
 	systray.AddSeparator()
-	mQuit := systray.AddMenuItem("Quit", "Quit Grabix")
+	mQuit := systray.AddMenuItem("Quit", "Quit Fasp")
 
 	// Handle menu clicks
 	go func() {

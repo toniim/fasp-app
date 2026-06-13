@@ -1,6 +1,6 @@
 package settings
 
-import "github.com/heytonyne/grabix/internal/model"
+import "github.com/heytonyne/fasp/internal/model"
 
 // Service defines the interface for settings management
 type Service interface {

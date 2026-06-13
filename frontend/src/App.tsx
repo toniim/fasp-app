@@ -116,7 +116,7 @@ function App() {
         <EditorWindow />
       ) : (
         <div className="welcome-screen">
-          <h1>Grabix</h1>
+          <h1>Fasp</h1>
           <p>Screenshot & Annotation Tool</p>
           <button className="capture-button" onClick={handleCapture} disabled={isCapturing}>
             {Icons.camera}

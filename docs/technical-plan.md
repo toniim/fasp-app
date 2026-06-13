@@ -1,4 +1,4 @@
-# Grabix - Technical Implementation Plan
+# Fasp - Technical Implementation Plan
 
 ## 1. Technology Stack
 
@@ -31,9 +31,9 @@
 ## 2. Project Structure
 
 ```
-grabix/
+fasp/
 ├── cmd/
-│   └── grabix/
+│   └── fasp/
 │       └── main.go                 # Application entry point
 ├── internal/
 │   ├── app/
@@ -452,7 +452,7 @@ wails build -platform windows/amd64
 
 ## 11. Next Steps
 
-1. **Initialize Wails project**: `wails init -n grabix -t react-ts`
+1. **Initialize Wails project**: `wails init -n fasp -t react-ts`
 2. **Setup project structure**: Create internal/ and service/ directories
 3. **Configure Makefile**: Add common commands (test, lint, mocks, build)
 4. **Implement CaptureService**: Start with macOS, then Windows
@@ -487,7 +487,7 @@ wails build -platform windows/amd64
 ```objc
 void tray_init(void) {
     @autoreleasepool {
-        NSLog(@"[Grabix] Scheduling tray creation after app launch...");
+        NSLog(@"[Fasp] Scheduling tray creation after app launch...");
 
         // Defer tray creation until after NSApplication finishes launching
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
@@ -510,7 +510,7 @@ static void create_status_item(void) {
         CFRetain((__bridge CFTypeRef)statusItem);
 
         // Set title and menu
-        statusItem.button.title = @"📸 Grabix";
+        statusItem.button.title = @"📸 Fasp";
         statusItem.menu = menu;
 
         // DON'T touch statusItem.button.window - let macOS manage it

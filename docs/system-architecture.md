@@ -1,4 +1,4 @@
-# System Architecture - Grabix
+# System Architecture - Fasp
 
 ## 1. High-Level Architecture
 
@@ -6,7 +6,7 @@
 ┌─────────────────────────────────────────────────────────┐
 │                    User (macOS/Windows)                  │
 ├─────────────────────────────────────────────────────────┤
-│                  Grabix Desktop App                       │
+│                  Fasp Desktop App                       │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │         Frontend (React + TypeScript)             │   │
 │  │  - UI Components (Editor, Settings, Toast)       │   │
@@ -157,7 +157,7 @@ Screenshot_20250201_143022_Display1.png
 - `Get(key string)` → interface{}, error
 - `Set(key string, value interface{})` → error
 
-**Location**: `~/.grabix/settings.json`
+**Location**: `~/.fasp/settings.json`
 
 **Structure**:
 ```json
@@ -464,7 +464,7 @@ Click "Save"
     ↓
 SettingsService.Set(key, value) updates in-memory
     ↓
-SettingsService.Save() writes to ~/.grabix/settings.json
+SettingsService.Save() writes to ~/.fasp/settings.json
     ↓
 HotkeyService.Unregister() old hotkey
     ↓
@@ -488,7 +488,7 @@ User clicks "Open System Preferences"
     ↓
 Launch System Preferences → Privacy & Security → Screen Recording
     ↓
-User adds Grabix to allowed apps
+User adds Fasp to allowed apps
     ↓
 App restarts (or user click "Continue")
     ↓
@@ -596,8 +596,8 @@ try {
 ## 7. Deployment Architecture
 
 ### Build Output
-- **macOS**: `grabix.app/` (self-contained bundle)
-- **Windows**: `grabix.exe` (single executable)
+- **macOS**: `fasp.app/` (self-contained bundle)
+- **Windows**: `fasp.exe` (single executable)
 
 ### Distribution
 - **macOS**: `.dmg` (disk image with drag-to-Applications)

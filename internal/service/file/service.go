@@ -1,6 +1,6 @@
 package file
 
-import "github.com/heytonyne/grabix/internal/model"
+import "github.com/heytonyne/fasp/internal/model"
 
 // Service defines the interface for file operations
 type Service interface {

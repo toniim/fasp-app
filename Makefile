@@ -61,5 +61,5 @@ clean: ## Clean build artifacts
 	@echo "Cleaned build artifacts"
 
 run: ## Run the built binary
-	@./build/bin/grabix
+	@./build/bin/fasp
 

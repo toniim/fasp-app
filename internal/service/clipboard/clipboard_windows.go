@@ -22,7 +22,7 @@ func New() Service {
 func (s *serviceImpl) CopyImage(data []byte) error {
 	// Create temp file
 	tmpDir := os.TempDir()
-	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("grabix_clipboard_%d.png", time.Now().UnixNano()))
+	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("fasp_clipboard_%d.png", time.Now().UnixNano()))
 	defer os.Remove(tmpFile)
 
 	// Write image data to temp file

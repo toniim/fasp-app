@@ -2,7 +2,7 @@
 
 ## Version Format
 
-Grabix uses calendar versioning with the format: `vYYYY.MM.PATCH`
+Fasp uses calendar versioning with the format: `vYYYY.MM.PATCH`
 
 - `YYYY` - Year (e.g., 2025)
 - `MM` - Month (e.g., 12 for December)
@@ -40,16 +40,16 @@ BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
 
 # Build with ldflags
 go build -ldflags "\
-  -X 'github.com/heytonyne/grabix/internal/version.Version=v2025.12.0' \
-  -X 'github.com/heytonyne/grabix/internal/version.BuildTime=${BUILD_TIME}' \
-  -X 'github.com/heytonyne/grabix/internal/version.GitCommit=${GIT_COMMIT}' \
-" -o bin/grabix
+  -X 'github.com/heytonyne/fasp/internal/version.Version=v2025.12.0' \
+  -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
+  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}' \
+" -o bin/fasp
 
 # Or use wails build
 wails build -ldflags "\
-  -X 'github.com/heytonyne/grabix/internal/version.Version=v2025.12.0' \
-  -X 'github.com/heytonyne/grabix/internal/version.BuildTime=${BUILD_TIME}' \
-  -X 'github.com/heytonyne/grabix/internal/version.GitCommit=${GIT_COMMIT}' \
+  -X 'github.com/heytonyne/fasp/internal/version.Version=v2025.12.0' \
+  -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
+  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}' \
 "
 ```
 
@@ -78,7 +78,7 @@ wails build -ldflags "\
 
 **Check architecture**:
 ```bash
-file build/bin/grabix.app/Contents/MacOS/grabix
+file build/bin/fasp.app/Contents/MacOS/fasp
 ```
 
 Output examples:
@@ -91,7 +91,7 @@ Output examples:
 Version is displayed in:
 
 1. **Editor Window** - Bottom left corner badge
-2. **About Dialog** - macOS menu > Grabix > About Grabix
+2. **About Dialog** - macOS menu > Fasp > About Fasp
 3. **API** - `GetVersion()` method returns version info
 
 ## Release Checklist

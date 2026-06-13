@@ -71,34 +71,10 @@ type Settings struct {
 	ActiveProvider    string                    `json:"active_provider"`
 	RunAtStartup      bool                      `json:"run_at_startup"`
 	AfterUploadAction string                    `json:"after_upload_action"` // none, direct, site, image
-}
-
-// AuthToken represents OAuth authentication tokens
-type AuthToken struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
-	IDToken      string    `json:"id_token"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	UserID       string    `json:"user_id"`
-}
-
-// AuthConfig represents OAuth configuration
-type AuthConfig struct {
-	ClientID     string
-	ClientSecret string
-	AuthorizeURL string
-	TokenURL     string
-	UserInfoURL  string
-	RedirectURI  string
-}
-
-// User represents authenticated user information
-type User struct {
-	ID       string `json:"id"`
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	Picture  string `json:"picture"`
-	Username string `json:"username"`
+	// ServerURL is the base URL of the fasp server (e.g. https://fasp.me).
+	ServerURL string `json:"server_url"`
+	// APIKey is the fasp API key (fsk_live_*) used to authorize uploads.
+	APIKey string `json:"api_key"`
 }
 
 // DefaultSettings returns default application settings
@@ -131,5 +107,7 @@ func DefaultSettings() *Settings {
 		ActiveProvider:    "clipboard",
 		RunAtStartup:      false,
 		AfterUploadAction: "direct",
+		ServerURL:         "https://api.fasp.me",
+		APIKey:            "",
 	}
 }

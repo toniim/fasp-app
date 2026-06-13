@@ -1,4 +1,4 @@
-# Grabix - Codebase Summary
+# Fasp - Codebase Summary
 
 **Generated from**: repomix analysis
 **Total Files**: 156 (excluding node_modules)
@@ -133,7 +133,7 @@ Functions:
 #### 6. Settings Service
 **Path**: `internal/service/settings/`
 - **service.go** - JSON config management
-- Reads/writes `~/.grabix/settings.json`
+- Reads/writes `~/.fasp/settings.json`
 
 Functions:
 - `Load()` - Read from disk
@@ -317,8 +317,8 @@ Key CSS patterns:
 ### wails.json
 ```json
 {
-  "name": "grabix",
-  "outputfilename": "grabix",
+  "name": "fasp",
+  "outputfilename": "fasp",
   "wailsjsdir": "./frontend",
   "frontend:dir": "./frontend",
   "frontend:install": "npm install",
@@ -330,7 +330,7 @@ Key CSS patterns:
 
 ### go.mod
 ```
-module github.com/heytonyne/grabix
+module github.com/heytonyne/fasp
 go 1.24
 
 require github.com/wailsapp/wails/v2 v2.11.0
@@ -344,7 +344,7 @@ Dependencies: Minimal (2 main libraries)
 ### package.json
 ```json
 {
-  "name": "grabix-frontend",
+  "name": "fasp-frontend",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -396,8 +396,8 @@ WAILS_DEV_SERVER_URL=auto
 
 ### Production Build (wails build)
 **Output**:
-- **macOS**: `grabix.app/` self-contained bundle
-- **Windows**: `grabix.exe` executable
+- **macOS**: `fasp.app/` self-contained bundle
+- **Windows**: `fasp.exe` executable
 
 **Build Targets**:
 ```bash
@@ -493,8 +493,8 @@ wails build -platform windows/amd64  # Windows 64-bit
 
 ### Setup
 ```bash
-git clone https://github.com/heytonyne/grabix.git
-cd grabix
+git clone https://github.com/heytonyne/fasp.git
+cd fasp
 go mod download
 cd frontend && npm install && cd ..
 ```
@@ -516,7 +516,7 @@ git push origin feature/name
 ### Build Release
 ```bash
 wails build            # Build for current OS
-# Creates grabix.app (macOS) or grabix.exe (Windows)
+# Creates fasp.app (macOS) or fasp.exe (Windows)
 ```
 
 ---
@@ -574,7 +574,7 @@ wails build            # Build for current OS
 
 ### Core Files
 ```
-grabix/
+fasp/
 ├── main.go                    # Entry point (387 LOC)
 ├── go.mod / go.sum            # Dependencies
 ├── wails.json                 # Wails config

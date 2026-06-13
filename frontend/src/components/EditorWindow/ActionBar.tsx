@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { SaveImage, OpenSaveDialog, GenerateFilename, CopyImageToClipboard, GetSettings } from '../../../wailsjs/go/main/App';
 import { WindowHide } from '../../../wailsjs/runtime/runtime';
 import { useEditorStore } from '../../store/editorStore';
@@ -54,7 +54,20 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
   const { image, cropRegion, applyCrop, setCropRegion } = useEditorStore();
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [currentImageData, setCurrentImageData] = useState<string>('');
+
+  // The Konva stage is displayed downscaled by `scaleRatio` to fit the editor
+  // viewport. Exporting at a fixed pixelRatio would bake in that downscale and
+  // produce a sub-native (blurry) image. Re-rendering at 1/scaleRatio restores
+  // the original capture resolution from the full-res source image.
+  const exportPixelRatio = scaleRatio > 0 ? 1 / scaleRatio : 1;
+
+  // Export the current stage (image + all annotations) to a PNG data URL at
+  // native resolution. Called lazily at action time so the latest annotations
+  // are always included.
+  const exportDataURL = useCallback((): string => {
+    if (!stageRef.current) return '';
+    return stageRef.current.toDataURL({ pixelRatio: exportPixelRatio });
+  }, [stageRef, exportPixelRatio]);
 
   const handleSave = async () => {
     if (!stageRef.current || !image) return;
@@ -62,8 +75,8 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
     try {
       setIsSaving(true);
 
-      // Export stage to data URL
-      const dataURL = stageRef.current.toDataURL({ pixelRatio: 2 });
+      // Export stage to data URL (image + latest annotations, native resolution)
+      const dataURL = exportDataURL();
 
       // Remove data URL prefix to get base64
       const base64Data = dataURL.replace(/^data:image\/\w+;base64,/, '');
@@ -110,8 +123,8 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
     if (!stageRef.current) return;
 
     try {
-      // Export stage to data URL
-      const dataURL = stageRef.current.toDataURL({ pixelRatio: 2 });
+      // Export stage to data URL (image + latest annotations, native resolution)
+      const dataURL = exportDataURL();
 
       // Remove data URL prefix to get base64
       const base64Data = dataURL.replace(/^data:image\/\w+;base64,/, '');
@@ -142,14 +155,6 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
     setCropRegion(null);
   };
 
-  // Update current image data when stage changes
-  useEffect(() => {
-    if (stageRef.current && image) {
-      const dataURL = stageRef.current.toDataURL({ pixelRatio: 2 });
-      setCurrentImageData(dataURL);
-    }
-  }, [stageRef, image]);
-
   const handleUploadComplete = (publicUrl: string, directUrl: string) => {
     setToast({ message: 'Upload successful! URL copied to clipboard.', type: 'success' });
 
@@ -169,8 +174,8 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
     try {
       setIsSaving(true);
 
-      // Export stage to data URL
-      const dataURL = stageRef.current.toDataURL({ pixelRatio: 2 });
+      // Export stage to data URL (image + latest annotations, native resolution)
+      const dataURL = exportDataURL();
 
       // Remove data URL prefix to get base64
       const base64Data = dataURL.replace(/^data:image\/\w+;base64,/, '');
@@ -181,7 +186,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
 
       // If no default path, use home directory
       if (!defaultPath) {
-        defaultPath = '/Users/Shared/Grabix'; // Fallback path
+        defaultPath = '/Users/Shared/Fasp'; // Fallback path
       }
 
       // Generate filename
@@ -303,7 +308,8 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
               <span>Copy</span>
             </button>
             <UploadButton
-              imageData={currentImageData}
+              getImageData={exportDataURL}
+              hasImage={!!image}
               onComplete={handleUploadComplete}
               onError={handleUploadError}
             />

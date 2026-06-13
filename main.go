@@ -9,18 +9,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/heytonyne/grabix/internal/model"
-	"github.com/heytonyne/grabix/internal/service/auth"
-	"github.com/heytonyne/grabix/internal/service/capture"
-	"github.com/heytonyne/grabix/internal/service/clipboard"
-	"github.com/heytonyne/grabix/internal/service/file"
-	"github.com/heytonyne/grabix/internal/service/hotkey"
-	"github.com/heytonyne/grabix/internal/service/permission"
-	"github.com/heytonyne/grabix/internal/service/settings"
-	"github.com/heytonyne/grabix/internal/service/startup"
-	"github.com/heytonyne/grabix/internal/service/upload"
-	"github.com/heytonyne/grabix/internal/tray"
-	"github.com/heytonyne/grabix/internal/version"
+	"github.com/heytonyne/fasp/internal/model"
+	"github.com/heytonyne/fasp/internal/service/capture"
+	"github.com/heytonyne/fasp/internal/service/clipboard"
+	"github.com/heytonyne/fasp/internal/service/file"
+	"github.com/heytonyne/fasp/internal/service/hotkey"
+	"github.com/heytonyne/fasp/internal/service/permission"
+	"github.com/heytonyne/fasp/internal/service/settings"
+	"github.com/heytonyne/fasp/internal/service/startup"
+	"github.com/heytonyne/fasp/internal/service/upload"
+	"github.com/heytonyne/fasp/internal/tray"
+	"github.com/heytonyne/fasp/internal/version"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
@@ -50,7 +49,6 @@ type App struct {
 	permissionService permission.Service
 	clipboardService  clipboard.Service
 	startupService    startup.Service
-	authService       auth.Service
 	uploadService     upload.Service
 	trayManager       tray.Manager
 }
@@ -73,8 +71,7 @@ func (a *App) startup(ctx context.Context) {
 	a.permissionService = permission.New()
 	a.clipboardService = clipboard.New()
 	a.startupService = startup.New()
-	a.authService = auth.New()
-	a.uploadService = upload.New()
+	a.uploadService = upload.New(a.settingsService)
 
 	// Setup hotkeys from settings
 	a.setupHotkeys()
@@ -147,7 +144,7 @@ func (a *App) setupTray() {
 
 			// Write icon to temp file
 			tmpDir := os.TempDir()
-			iconPath := filepath.Join(tmpDir, "grabix-trayicon"+iconExt)
+			iconPath := filepath.Join(tmpDir, "fasp-trayicon"+iconExt)
 
 			writeErr := os.WriteFile(iconPath, iconData, 0644)
 			if writeErr != nil {
@@ -369,33 +366,6 @@ func (a *App) GetVersion() version.Info {
 	return version.Get()
 }
 
-// Auth methods
-
-// AuthStartLogin initiates the OAuth login flow
-func (a *App) AuthStartLogin() (string, error) {
-	return a.authService.StartLogin()
-}
-
-// AuthHandleCallback processes the OAuth callback
-func (a *App) AuthHandleCallback(code string) (*model.User, error) {
-	return a.authService.HandleCallback(code)
-}
-
-// AuthGetCurrentUser returns the currently authenticated user
-func (a *App) AuthGetCurrentUser() (*model.User, error) {
-	return a.authService.GetCurrentUser()
-}
-
-// AuthLogout logs out the current user
-func (a *App) AuthLogout() error {
-	return a.authService.Logout()
-}
-
-// AuthIsLoggedIn checks if user is logged in
-func (a *App) AuthIsLoggedIn() bool {
-	return a.authService.IsLoggedIn()
-}
-
 // Upload methods
 
 // UploadInit initiates a file upload
@@ -408,9 +378,14 @@ func (a *App) UploadComplete(fileID string) (*upload.CompleteResponse, error) {
 	return a.uploadService.Complete(fileID)
 }
 
-// IsUploadConfigured checks if upload is configured
+// IsUploadConfigured checks if upload is configured (server URL + API key set)
 func (a *App) IsUploadConfigured() bool {
 	return a.uploadService.IsConfigured()
+}
+
+// TestUploadConnection verifies the configured server URL + API key are valid
+func (a *App) TestUploadConnection() error {
+	return a.uploadService.TestConnection()
 }
 
 func main() {
@@ -419,7 +394,7 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:             "Grabix - Screenshot & Annotation",
+		Title:             "Fasp - Screenshot & Annotation",
 		Width:             1024,
 		Height:            768,
 		StartHidden:       false, // TEMP: Show window for testing tray
@@ -434,7 +409,7 @@ func main() {
 		Mac: &mac.Options{
 			TitleBar: mac.TitleBarDefault(),
 			About: &mac.AboutInfo{
-				Title:   "Grabix",
+				Title:   "Fasp",
 				Message: "Screenshot & Annotation Tool\n\n" + version.Get().String(),
 			},
 		},

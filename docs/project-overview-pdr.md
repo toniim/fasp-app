@@ -1,8 +1,8 @@
-# Grabix - Project Overview & Product Development Requirements
+# Fasp - Project Overview & Product Development Requirements
 
 ## 1. Vision & Product Statement
 
-Grabix is a **lightweight, cross-platform desktop screenshot and annotation tool** that enables users to capture, annotate, and share screenshots in seconds. Built with native performance (Go backend) and modern UI (React frontend), Grabix bridges the gap between simple screenshot utilities and feature-heavy image editors.
+Fasp is a **lightweight, cross-platform desktop screenshot and annotation tool** that enables users to capture, annotate, and share screenshots in seconds. Built with native performance (Go backend) and modern UI (React frontend), Fasp bridges the gap between simple screenshot utilities and feature-heavy image editors.
 
 **Mission**: Streamline visual communication by providing the fastest, most intuitive annotation experience on macOS and Windows.
 
@@ -38,7 +38,7 @@ Grabix is a **lightweight, cross-platform desktop screenshot and annotation tool
 - **Hotkey Configuration**: Rebind capture hotkeys to user preference
 - **Format Selection**: Default save format (PNG/JPEG/WebP)
 - **Upload Providers**: Extensible system for future cloud integrations
-- **Persistent Config**: JSON-based settings stored locally (`~/.grabix/settings.json`)
+- **Persistent Config**: JSON-based settings stored locally (`~/.fasp/settings.json`)
 
 ---
 
@@ -255,8 +255,8 @@ Grabix is a **lightweight, cross-platform desktop screenshot and annotation tool
 ```
 
 ### Environment
-- Config location: `~/.grabix/settings.json` (portable)
-- Logs location: `~/.grabix/logs/` (future)
+- Config location: `~/.fasp/settings.json` (portable)
+- Logs location: `~/.fasp/logs/` (future)
 - Cache: None (stateless design)
 
 ---

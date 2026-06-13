@@ -7,7 +7,7 @@
 
 set -e
 
-APP_PATH="build/bin/grabix.app"
+APP_PATH="build/bin/fasp.app"
 ENTITLEMENTS="build/darwin/entitlements.plist"
 CERT_NAME="${1:-${SIGN_CERT:--}}"  # Arg > env var > ad-hoc
 
@@ -17,7 +17,7 @@ if [ ! -d "$APP_PATH" ]; then
     exit 1
 fi
 
-echo "Signing grabix.app..."
+echo "Signing fasp.app..."
 echo "  Certificate: ${CERT_NAME}"
 echo "  Entitlements: ${ENTITLEMENTS}"
 
