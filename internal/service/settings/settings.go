@@ -44,6 +44,20 @@ func New() Service {
 	return s
 }
 
+// toInt coerces a setting value (int from Go, float64 from JSON) to int.
+func toInt(value interface{}) (int, bool) {
+	switch v := value.(type) {
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	case float64:
+		return int(v), true
+	default:
+		return 0, false
+	}
+}
+
 // Get retrieves a setting value by key
 func (s *serviceImpl) Get(key string) (interface{}, error) {
 	s.mu.RLock()
@@ -70,6 +84,12 @@ func (s *serviceImpl) Get(key string) (interface{}, error) {
 		return s.settings.ServerURL, nil
 	case "api_key":
 		return s.settings.APIKey, nil
+	case "window_maximized":
+		return s.settings.WindowMaximized, nil
+	case "window_width":
+		return s.settings.WindowWidth, nil
+	case "window_height":
+		return s.settings.WindowHeight, nil
 	default:
 		return nil, fmt.Errorf("unknown setting key: %s", key)
 	}
@@ -143,6 +163,24 @@ func (s *serviceImpl) Set(key string, value interface{}) error {
 			s.settings.APIKey = v
 		} else {
 			return fmt.Errorf("invalid type for api_key")
+		}
+	case "window_maximized":
+		if v, ok := value.(bool); ok {
+			s.settings.WindowMaximized = v
+		} else {
+			return fmt.Errorf("invalid type for window_maximized")
+		}
+	case "window_width":
+		if v, ok := toInt(value); ok {
+			s.settings.WindowWidth = v
+		} else {
+			return fmt.Errorf("invalid type for window_width")
+		}
+	case "window_height":
+		if v, ok := toInt(value); ok {
+			s.settings.WindowHeight = v
+		} else {
+			return fmt.Errorf("invalid type for window_height")
 		}
 	default:
 		return fmt.Errorf("unknown setting key: %s", key)

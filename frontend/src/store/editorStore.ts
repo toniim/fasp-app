@@ -11,6 +11,7 @@ interface EditorStore extends EditorState {
   addAnnotation: (annotation: Annotation) => void;
   updateAnnotation: (id: string, updates: Partial<Annotation>) => void;
   deleteAnnotation: (id: string) => void;
+  deleteAnnotations: (ids: string[]) => void;
   setSelectedAnnotation: (id: string | null) => void;
   clearAnnotations: () => void;
   undo: () => void;
@@ -199,6 +200,22 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   deleteAnnotation: (id: string) => {
     const { annotations, history, historyStep } = get();
     const newAnnotations = annotations.filter((ann) => ann.id !== id);
+    const newHistory = history.slice(0, historyStep + 1);
+    newHistory.push(newAnnotations);
+
+    set({
+      annotations: newAnnotations,
+      history: newHistory,
+      historyStep: historyStep + 1,
+      selectedAnnotationId: null,
+    });
+  },
+
+  deleteAnnotations: (ids: string[]) => {
+    if (ids.length === 0) return;
+    const { annotations, history, historyStep } = get();
+    const idSet = new Set(ids);
+    const newAnnotations = annotations.filter((ann) => !idSet.has(ann.id));
     const newHistory = history.slice(0, historyStep + 1);
     newHistory.push(newAnnotations);
 

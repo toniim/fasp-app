@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { SaveImage, OpenSaveDialog, GenerateFilename, CopyImageToClipboard, GetSettings } from '../../../wailsjs/go/main/App';
-import { WindowHide } from '../../../wailsjs/runtime/runtime';
+import { SaveImage, OpenSaveDialog, GenerateFilename, CopyImageToClipboard, GetSettings, HideWindow } from '../../../wailsjs/go/main/App';
 import { useEditorStore } from '../../store/editorStore';
 import Toast from '../Toast/Toast';
 import { UploadButton } from './UploadButton';
@@ -109,7 +108,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
 
       // Close window after successful save
       setTimeout(() => {
-        WindowHide();
+        HideWindow();
       }, 1500); // Wait for toast to be visible
     } catch (error) {
       console.error('Failed to save screenshot:', error);
@@ -139,7 +138,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
 
       // Close window after successful copy
       setTimeout(() => {
-        WindowHide();
+        HideWindow();
       }, 1500); // Wait for toast to be visible
     } catch (error) {
       console.error('Failed to copy to clipboard:', error);
@@ -160,7 +159,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
 
     // Close window after successful upload
     setTimeout(() => {
-      WindowHide();
+      HideWindow();
     }, 1500);
   };
 
@@ -210,7 +209,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
 
       // Close window after successful quick save
       setTimeout(() => {
-        WindowHide();
+        HideWindow();
       }, 1500); // Wait for toast to be visible
     } catch (error) {
       console.error('Failed to quick save:', error);
@@ -263,7 +262,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
         if (cropRegion) {
           handleCancelCrop();
         } else {
-          WindowHide();
+          HideWindow();
         }
         return;
       }

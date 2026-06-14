@@ -51,6 +51,7 @@ type App struct {
 	startupService    startup.Service
 	uploadService     upload.Service
 	trayManager       tray.Manager
+	quitting          bool
 }
 
 // NewApp creates a new App application struct
@@ -98,13 +99,12 @@ func (a *App) setupTray() {
 			runtime.EventsEmit(a.ctx, "open:image")
 
 		case tray.ActionShowWindow:
-			// Show main window
-			runtime.WindowShow(a.ctx)
-			runtime.WindowUnminimise(a.ctx)
+			// Show main window (restore last maximized/normal state)
+			a.ShowWindow()
 
 		case tray.ActionHideWindow:
-			// Hide main window
-			runtime.WindowHide(a.ctx)
+			// Hide main window (save state first)
+			a.HideWindow()
 
 		case tray.ActionSettings:
 			// Open settings window
@@ -112,7 +112,7 @@ func (a *App) setupTray() {
 
 		case tray.ActionQuit:
 			// Quit application
-			runtime.Quit(a.ctx)
+			a.quitApp()
 		}
 	})
 
@@ -192,7 +192,7 @@ func (a *App) buildMenu() *menu.Menu {
 	})
 	fileMenu.AddSeparator()
 	fileMenu.AddText("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
-		runtime.Quit(a.ctx)
+		a.quitApp()
 	})
 
 	// Window menu
@@ -388,6 +388,80 @@ func (a *App) TestUploadConnection() error {
 	return a.uploadService.TestConnection()
 }
 
+// Window state methods
+
+// applyWindowState restores the saved maximized/normal editor window state.
+func (a *App) applyWindowState() {
+	s, err := a.settingsService.GetAll()
+	if err != nil {
+		return
+	}
+	println("[window] applyWindowState maximized=", s.WindowMaximized, "size=", s.WindowWidth, s.WindowHeight)
+	if s.WindowMaximized {
+		runtime.WindowMaximise(a.ctx)
+		return
+	}
+	runtime.WindowUnmaximise(a.ctx)
+	if s.WindowWidth > 0 && s.WindowHeight > 0 {
+		runtime.WindowSetSize(a.ctx, s.WindowWidth, s.WindowHeight)
+	}
+}
+
+// saveWindowState persists the current editor window size and maximized state.
+func (a *App) saveWindowState() {
+	if a.ctx == nil {
+		return
+	}
+	maxed := runtime.WindowIsMaximised(a.ctx)
+	w, h := runtime.WindowGetSize(a.ctx)
+	println("[window] saveWindowState maximized=", maxed, "size=", w, h)
+	_ = a.settingsService.Set("window_maximized", maxed)
+	// Only remember the size when not maximized (maximized size is the screen).
+	if !maxed && w > 0 && h > 0 {
+		_ = a.settingsService.Set("window_width", w)
+		_ = a.settingsService.Set("window_height", h)
+	}
+}
+
+// ShowWindow shows the editor window, restoring its last maximized/normal state.
+func (a *App) ShowWindow() {
+	runtime.WindowShow(a.ctx)
+	runtime.WindowUnminimise(a.ctx)
+	a.applyWindowState()
+	// Re-apply shortly after: on Windows, maximising right after Show can be
+	// ignored because the window hasn't finished becoming visible yet.
+	go func() {
+		time.Sleep(120 * time.Millisecond)
+		a.applyWindowState()
+	}()
+}
+
+// HideWindow saves the current window state and hides the editor window.
+func (a *App) HideWindow() {
+	a.saveWindowState()
+	runtime.WindowHide(a.ctx)
+}
+
+// onBeforeClose runs when the window's close button (X) is clicked or on quit.
+// We save the window state, then either allow the quit (from tray/menu) or hide
+// the window and keep running (X button). HideWindowOnClose is intentionally
+// NOT used because it hides the window WITHOUT invoking this hook, so the state
+// would never get saved.
+func (a *App) onBeforeClose(_ context.Context) bool {
+	a.saveWindowState()
+	if a.quitting {
+		return false // allow the app to quit
+	}
+	runtime.WindowHide(a.ctx)
+	return true // prevent close; just hide the window
+}
+
+// quitApp marks a real quit and exits (used by tray/menu Quit).
+func (a *App) quitApp() {
+	a.quitting = true
+	runtime.Quit(a.ctx)
+}
+
 func main() {
 	// Create an instance of the app structure
 	app := NewApp()
@@ -395,16 +469,18 @@ func main() {
 	// Create application with options
 	err := wails.Run(&options.App{
 		Title:             "Fasp - Screenshot & Annotation",
-		Width:             1024,
-		Height:            768,
-		StartHidden:       false, // TEMP: Show window for testing tray
-		HideWindowOnClose: true,  // Hide instead of quit when closing
+		Width:       1024,
+		Height:      768,
+		StartHidden: false, // TEMP: Show window for testing tray
+		// HideWindowOnClose is NOT set: onBeforeClose handles hide-on-close so we
+		// can save the window state before hiding.
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
+		OnBeforeClose:    app.onBeforeClose,
 		Menu:             app.buildMenu(),
 		Mac: &mac.Options{
 			TitleBar: mac.TitleBarDefault(),

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import './App.css';
-import { CaptureActiveDisplay, OpenImageDialog, ReadImageFile } from '../wailsjs/go/main/App';
+import { CaptureActiveDisplay, OpenImageDialog, ReadImageFile, ShowWindow } from '../wailsjs/go/main/App';
 import { useEditorStore } from './store/editorStore';
 import EditorWindow from './components/EditorWindow/EditorWindow';
 import SettingsWindow from './components/SettingsWindow/SettingsWindow';
 import PermissionWarning from './components/PermissionWarning/PermissionWarning';
-import { EventsOn, WindowShow, WindowUnminimise, WindowHide } from '../wailsjs/runtime/runtime';
+import { EventsOn } from '../wailsjs/runtime/runtime';
 
 // SVG Icons - Clean, macOS-style
 const Icons = {
@@ -43,8 +43,7 @@ function App() {
 
     const unsubscribeSettings = EventsOn('open:settings', () => {
       setShowSettings(true);
-      WindowShow();
-      WindowUnminimise();
+      ShowWindow();
     });
 
     const unsubscribeOpenImage = EventsOn('open:image', () => {
@@ -66,16 +65,14 @@ function App() {
       const result = await CaptureActiveDisplay();
 
       // Show window with the captured image
-      WindowUnminimise();
-      WindowShow();
+      ShowWindow();
 
       setImage(result.data);
     } catch (error) {
       console.error('Failed to capture screenshot:', error);
 
       // Show window even if capture failed
-      WindowUnminimise();
-      WindowShow();
+      ShowWindow();
 
       alert('Failed to capture screenshot: ' + error);
     } finally {
@@ -97,8 +94,7 @@ function App() {
       const imageData = await ReadImageFile(path);
 
       // Show window with the image
-      WindowUnminimise();
-      WindowShow();
+      ShowWindow();
 
       // Set image in editor
       setImage(imageData);

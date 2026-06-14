@@ -104,6 +104,9 @@ export namespace model {
 	    after_upload_action: string;
 	    server_url: string;
 	    api_key: string;
+	    window_maximized: boolean;
+	    window_width: number;
+	    window_height: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -121,6 +124,9 @@ export namespace model {
 	        this.after_upload_action = source["after_upload_action"];
 	        this.server_url = source["server_url"];
 	        this.api_key = source["api_key"];
+	        this.window_maximized = source["window_maximized"];
+	        this.window_width = source["window_width"];
+	        this.window_height = source["window_height"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

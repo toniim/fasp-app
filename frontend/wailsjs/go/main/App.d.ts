@@ -22,6 +22,8 @@ export function GetSettings():Promise<model.Settings>;
 
 export function GetVersion():Promise<version.Info>;
 
+export function HideWindow():Promise<void>;
+
 export function IsUploadConfigured():Promise<boolean>;
 
 export function OpenImageDialog():Promise<string>;
@@ -39,6 +41,8 @@ export function RequestScreenRecordingPermission():Promise<void>;
 export function ResumeHotkeys():Promise<void>;
 
 export function SaveImage(arg1:model.SaveOptions,arg2:Array<number>):Promise<void>;
+
+export function ShowWindow():Promise<void>;
 
 export function TestUploadConnection():Promise<void>;
 

@@ -22,6 +22,7 @@ const EditorWindow: React.FC = () => {
     addAnnotation,
     updateAnnotation,
     deleteAnnotation,
+    deleteAnnotations,
     setSelectedAnnotation,
     setSelectedTool,
     setSelectedSize,
@@ -46,6 +47,9 @@ const EditorWindow: React.FC = () => {
   const [hoveredAnnotationId, setHoveredAnnotationId] = useState<string | null>(null);
   // Id of the text-box annotation currently being edited inline (in-canvas).
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  // Marquee (rubber-band) multi-selection with the select tool.
+  const [selectionRect, setSelectionRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [marqueeSelectedIds, setMarqueeSelectedIds] = useState<string[]>([]);
 
   const stageRef = useRef<any>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
@@ -281,6 +285,12 @@ const EditorWindow: React.FC = () => {
     }
   }, [zoom, stageSize]);
 
+  // Clear marquee multi-selection when switching tools
+  useEffect(() => {
+    setMarqueeSelectedIds([]);
+    setSelectionRect(null);
+  }, [selectedTool]);
+
   // Attach transformer to selected annotation
   useEffect(() => {
     if (!transformerRef.current) return;
@@ -393,16 +403,22 @@ const EditorWindow: React.FC = () => {
         if (key === 'a') {
           e.preventDefault();
           setSelectedTool('select');
-          // TODO: Select all annotations
+          setSelectedAnnotation(null);
+          setMarqueeSelectedIds(annotations.map((ann) => ann.id));
           return;
         }
 
         // Cmd+D / Ctrl+D - Delete selected
         if (key === 'd') {
           e.preventDefault();
-          if (selectedAnnotationId) {
-            deleteAnnotation(selectedAnnotationId);
+          const ids = Array.from(new Set([
+            ...(selectedAnnotationId ? [selectedAnnotationId] : []),
+            ...marqueeSelectedIds,
+          ]));
+          if (ids.length) {
+            deleteAnnotations(ids);
             setSelectedAnnotation(null);
+            setMarqueeSelectedIds([]);
           }
           return;
         }
@@ -411,12 +427,17 @@ const EditorWindow: React.FC = () => {
         // We don't preventDefault here to let ActionBar handle them
       }
 
-      // Delete or Backspace - Delete selected annotation (without Cmd/Ctrl)
+      // Delete or Backspace - Delete selected annotation(s) (without Cmd/Ctrl)
       if (!cmdOrCtrl && (e.key === 'Delete' || e.key === 'Backspace')) {
-        if (selectedAnnotationId) {
+        const ids = Array.from(new Set([
+          ...(selectedAnnotationId ? [selectedAnnotationId] : []),
+          ...marqueeSelectedIds,
+        ]));
+        if (ids.length) {
           e.preventDefault();
-          deleteAnnotation(selectedAnnotationId);
+          deleteAnnotations(ids);
           setSelectedAnnotation(null);
+          setMarqueeSelectedIds([]);
           return;
         }
       }
@@ -482,7 +503,7 @@ const EditorWindow: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [cropRegion, textInput, editingTextId, scaleRatio, applyCrop, setCropRegion, setSelectedTool, selectedSize, setSelectedSize, undo, redo, selectedAnnotationId, deleteAnnotation, setSelectedAnnotation]);
+  }, [cropRegion, textInput, editingTextId, scaleRatio, annotations, marqueeSelectedIds, applyCrop, setCropRegion, setSelectedTool, selectedSize, setSelectedSize, undo, redo, selectedAnnotationId, deleteAnnotation, deleteAnnotations, setSelectedAnnotation]);
 
   // Helper to get pointer position adjusted for zoom and pan
   const getAdjustedPointerPosition = (stage: any) => {
@@ -499,6 +520,16 @@ const EditorWindow: React.FC = () => {
     const clickedOnStage = e.target === stage;
     const clickedOnImage = e.target.className === 'Image';
     const clickedOnBackground = clickedOnStage || clickedOnImage;
+
+    // Clicking a Transformer handle (resize/rotate anchor) must only transform
+    // the selected object — never start drawing a new annotation or crop region.
+    let ancestor = e.target;
+    while (ancestor) {
+      if (typeof ancestor.getClassName === 'function' && ancestor.getClassName() === 'Transformer') {
+        return;
+      }
+      ancestor = ancestor.getParent && ancestor.getParent();
+    }
 
     // For crop tool, start drawing crop region (priority over panning)
     if (selectedTool === 'crop') {
@@ -522,9 +553,16 @@ const EditorWindow: React.FC = () => {
 
     // For select tool, only handle clicks on annotations (handled in renderAnnotation)
     if (selectedTool === 'select') {
-      // Click on stage/image background deselects
       if (clickedOnBackground) {
+        // Start a marquee selection; clear any current selection.
         setSelectedAnnotation(null);
+        setMarqueeSelectedIds([]);
+        const pos = getAdjustedPointerPosition(stage);
+        setSelectionRect({ x: pos.x, y: pos.y, width: 0, height: 0 });
+        setIsDrawing(true);
+      } else {
+        // Clicked an annotation: its onClick does the single-select; drop marquee.
+        setMarqueeSelectedIds([]);
       }
       return;
     }
@@ -687,6 +725,17 @@ const EditorWindow: React.FC = () => {
 
     if (!isDrawing) return;
 
+    // Update marquee selection rectangle
+    if (selectionRect) {
+      const mpos = getAdjustedPointerPosition(stage);
+      setSelectionRect({
+        ...selectionRect,
+        width: mpos.x - selectionRect.x,
+        height: mpos.y - selectionRect.y,
+      });
+      return;
+    }
+
     const pos = getAdjustedPointerPosition(stage);
 
     // Handle crop region drawing
@@ -734,6 +783,36 @@ const EditorWindow: React.FC = () => {
     }
 
     if (!isDrawing) return;
+
+    // Finalize marquee selection: select every annotation the box overlaps.
+    if (selectionRect) {
+      const rx = selectionRect.width < 0 ? selectionRect.x + selectionRect.width : selectionRect.x;
+      const ry = selectionRect.height < 0 ? selectionRect.y + selectionRect.height : selectionRect.y;
+      const rw = Math.abs(selectionRect.width);
+      const rh = Math.abs(selectionRect.height);
+
+      if (rw > 3 && rh > 3) {
+        const ids = annotations
+          .filter((ann) => {
+            const node = shapeRefs.current[ann.id];
+            if (!node) return false;
+            const box = node.getClientRect({ relativeTo: node.getLayer() });
+            // AABB overlap test
+            return !(
+              box.x > rx + rw ||
+              box.x + box.width < rx ||
+              box.y > ry + rh ||
+              box.y + box.height < ry
+            );
+          })
+          .map((ann) => ann.id);
+        setMarqueeSelectedIds(ids);
+      }
+
+      setSelectionRect(null);
+      setIsDrawing(false);
+      return;
+    }
 
     // Handle crop region completion
     if (selectedTool === 'crop' && cropRegion) {
@@ -783,27 +862,43 @@ const EditorWindow: React.FC = () => {
       return;
     }
 
-    if (currentAnnotation.width !== 0 || currentAnnotation.height !== 0 || currentAnnotation.points) {
-      // For arrow-text, show text input after drawing
-      if (selectedTool === 'arrow-text' && currentAnnotation.points) {
-        const [startX, startY] = currentAnnotation.points;
-        const tempAnnotation = { ...currentAnnotation };
+    let annToAdd = currentAnnotation;
 
-        // Add annotation first
+    // Arrows: enforce a minimum length so a click (no drag) still produces a
+    // proper arrow with a visible line, not just the arrowhead. A zero-length
+    // arrow also breaks the curve math (division by zero) when selected.
+    if (
+      (selectedTool === 'arrow' || selectedTool === 'arrow-text' || selectedTool === 'numbered-arrow') &&
+      annToAdd.points
+    ) {
+      const [sx, sy, ex, ey] = annToAdd.points;
+      const dist = Math.hypot(ex - sx, ey - sy);
+      const MIN_LEN = 60;
+      if (dist < MIN_LEN) {
+        // Extend along the drag direction; default to rightward on a pure click.
+        let ux = ex - sx;
+        let uy = ey - sy;
+        if (dist < 1) {
+          ux = 1;
+          uy = 0;
+        } else {
+          ux /= dist;
+          uy /= dist;
+        }
+        annToAdd = { ...annToAdd, points: [sx, sy, sx + ux * MIN_LEN, sy + uy * MIN_LEN] };
+      }
+    }
+
+    if (annToAdd.width !== 0 || annToAdd.height !== 0 || annToAdd.points) {
+      // For arrow-text, start inline editing of the label (same UX as the text tool)
+      if (selectedTool === 'arrow-text' && annToAdd.points) {
+        const tempAnnotation = { ...annToAdd, fontSize: annToAdd.fontSize || 16 };
         addAnnotation(tempAnnotation);
-
-        // Show text input at start point (opposite of arrow)
-        const textPadding = 8;
-        const textBgPadding = 6;
-        const textWidth = 150; // Default width for empty text
-        const textX = startX - textWidth - textPadding;
-        const textY = startY - 12;
-
-        setTextInput({ x: textX + textBgPadding, y: textY + 4, fontSize: 14, annotationId: tempAnnotation.id });
-        setTextValue('');
-        setTimeout(() => textInputRef.current?.focus(), 0);
+        setSelectedAnnotation(tempAnnotation.id);
+        setEditingTextId(tempAnnotation.id);
+        setTimeout(() => textEditRef.current?.focus(), 0);
       } else {
-        addAnnotation(currentAnnotation);
+        addAnnotation(annToAdd);
       }
     }
 
@@ -859,13 +954,24 @@ const EditorWindow: React.FC = () => {
     }
   };
 
-  // Finish inline text-box editing. Removes the box if left empty.
+  // Position of the arrow-text label: just above the arrow's start point (its
+  // tail). Stable (independent of text/direction) so it doesn't jump while
+  // typing and matches between the inline editor and the rendered text.
+  const arrowTextLabelPos = (points: number[], _text: string, fontSize: number) => {
+    const sx = points[0] || 0;
+    const sy = points[1] || 0;
+    const gap = 6;
+    return { x: sx, y: sy - fontSize - gap };
+  };
+
+  // Finish inline text editing. A plain text box left empty is removed; an
+  // arrow-text label left empty just stays textless (its arrow remains).
   const commitTextEditing = () => {
     const id = editingTextId;
     setEditingTextId(null);
     if (!id) return;
     const ann = annotations.find((a) => a.id === id);
-    if (ann && !(ann.text || '').trim()) {
+    if (ann && ann.type === 'text' && !(ann.text || '').trim()) {
       deleteAnnotation(id);
       setSelectedAnnotation(null);
     }
@@ -893,6 +999,9 @@ const EditorWindow: React.FC = () => {
     const dx = x2 - x1;
     const dy = y2 - y1;
     const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Degenerate (zero-length) arrow: no curve, avoid division by zero / NaN.
+    if (distance < 0.0001) return [x1, y1, x2, y2];
 
     // Control point offset (perpendicular to line)
     const offsetX = -dy / distance * distance * curvature;
@@ -988,12 +1097,15 @@ const EditorWindow: React.FC = () => {
         rotation: node.rotation(),
       });
     } else if (ann.type === 'text') {
-      // Text is a box: resize changes the wrapping area, not the font size.
+      // Resize scales the font with the vertical scale (corner/vertical drag
+      // grows the text); horizontal-only drag just changes the wrap width.
+      const newFontSize = Math.max(8, (ann.fontSize || 16) * scaleY);
       updateAnnotation(annId, {
         x: node.x(),
         y: node.y(),
-        width: Math.max(40, (ann.width || 0) * scaleX),
-        height: Math.max((ann.fontSize || 16) + 8, (ann.height || 0) * scaleY),
+        width: Math.max(20, (ann.width || 0) * scaleX),
+        height: Math.max(newFontSize + 8, (ann.height || 0) * scaleY),
+        fontSize: newFontSize,
         rotation: node.rotation(),
       });
     }
@@ -1018,7 +1130,7 @@ const EditorWindow: React.FC = () => {
   };
 
   const renderAnnotation = (ann: Annotation) => {
-    const isSelected = ann.id === selectedAnnotationId;
+    const isSelected = ann.id === selectedAnnotationId || marqueeSelectedIds.includes(ann.id);
     const isDraggable = selectedTool === 'select' || isSelected;
 
     switch (ann.type) {
@@ -1110,8 +1222,9 @@ const EditorWindow: React.FC = () => {
         const dx = x2 - x1;
         const dy = y2 - y1;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        const offsetX = -dy / distance * distance * arrowCurvature;
-        const offsetY = dx / distance * distance * arrowCurvature;
+        const safeDist = distance || 1; // avoid division by zero on degenerate arrows
+        const offsetX = -dy / safeDist * distance * arrowCurvature;
+        const offsetY = dx / safeDist * distance * arrowCurvature;
         const controlX = midX + offsetX;
         const controlY = midY + offsetY;
 
@@ -1223,17 +1336,10 @@ const EditorWindow: React.FC = () => {
             </Group>
           );
         }
-      case 'arrow-text':
-        const [atStartX, atStartY, atEndX, atEndY] = ann.points || [0, 0, 0, 0];
-        const textPadding = 8;
-        const textBgPadding = 6;
-
-        // Calculate text position at start point (opposite of arrow)
-        // Position text to the left of start point
-        const textWidth = ann.text ? (ann.text.length * 8) + textBgPadding * 2 : 150;
-        const textX = atStartX - textWidth - textPadding;
-        const textY = atStartY - 12;
-
+      case 'arrow-text': {
+        const isEditingLabel = editingTextId === ann.id;
+        const atFontSize = ann.fontSize || 16;
+        const atLabel = arrowTextLabelPos(ann.points || [], ann.text || '', atFontSize);
         return (
           <Group
             key={ann.id}
@@ -1245,10 +1351,9 @@ const EditorWindow: React.FC = () => {
             onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
             onMouseLeave={handleAnnotationMouseLeave}
             onDblClick={() => {
-              // Double-click to edit text
-              setTextInput({ x: textX + textBgPadding, y: textY + 4, fontSize: 14, annotationId: ann.id });
-              setTextValue(ann.text || '');
-              setTimeout(() => textInputRef.current?.focus(), 0);
+              setSelectedAnnotation(ann.id);
+              setEditingTextId(ann.id);
+              setTimeout(() => textEditRef.current?.focus(), 0);
             }}
             onDragEnd={(e) => handleDragEnd(e, ann.id)}
             onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
@@ -1262,34 +1367,20 @@ const EditorWindow: React.FC = () => {
               pointerWidth={10}
               hitStrokeWidth={20}
             />
-            {/* Text at the start of arrow (opposite of arrow head) */}
-            {ann.text && (
-              <>
-                <Rect
-                  x={textX}
-                  y={textY}
-                  width={textWidth}
-                  height={24}
-                  fill="white"
-                  stroke={isSelected ? '#007bff' : ann.stroke}
-                  strokeWidth={1}
-                  cornerRadius={4}
-                />
-                <Text
-                  x={textX + textBgPadding}
-                  y={textY + 4}
-                  text={ann.text}
-                  fontSize={14}
-                  fill={ann.stroke}
-                  fontStyle="normal"
-                />
-              </>
-            )}
-            {/* Show placeholder when selected and no text */}
-            {isSelected && !ann.text && (
+            {/* Plain text label (rendered like the text tool); hidden while editing */}
+            {!isEditingLabel && ann.text && (
               <Text
-                x={textX + textBgPadding}
-                y={textY + 4}
+                x={atLabel.x}
+                y={atLabel.y}
+                text={ann.text}
+                fontSize={atFontSize}
+                fill={isSelected ? '#007bff' : ann.stroke}
+              />
+            )}
+            {!isEditingLabel && isSelected && !ann.text && (
+              <Text
+                x={atLabel.x}
+                y={atLabel.y}
                 text="Double-click to add text"
                 fontSize={12}
                 fill="#999"
@@ -1298,6 +1389,7 @@ const EditorWindow: React.FC = () => {
             )}
           </Group>
         );
+      }
       case 'numbered-arrow':
         const [startX, startY, endX, endY] = ann.points || [0, 0, 0, 0];
         const circleRadius = 16;
@@ -1438,6 +1530,20 @@ const EditorWindow: React.FC = () => {
             />
             {annotations.map(renderAnnotation)}
             {currentAnnotation && renderAnnotation(currentAnnotation)}
+            {/* Marquee selection rectangle */}
+            {selectionRect && (
+              <Rect
+                x={selectionRect.width < 0 ? selectionRect.x + selectionRect.width : selectionRect.x}
+                y={selectionRect.height < 0 ? selectionRect.y + selectionRect.height : selectionRect.y}
+                width={Math.abs(selectionRect.width)}
+                height={Math.abs(selectionRect.height)}
+                fill="rgba(0, 123, 255, 0.1)"
+                stroke="#007bff"
+                strokeWidth={1}
+                dash={[4, 4]}
+                listening={false}
+              />
+            )}
             {cropRegion && (() => {
               const normX = cropRegion.width < 0 ? cropRegion.x + cropRegion.width : cropRegion.x;
               const normY = cropRegion.height < 0 ? cropRegion.y + cropRegion.height : cropRegion.y;
@@ -1579,9 +1685,26 @@ const EditorWindow: React.FC = () => {
           const ann = annotations.find((a) => a.id === editingTextId);
           if (!ann) return null;
           const rect = stageRef.current.container().getBoundingClientRect();
-          const left = rect.left + (ann.x || 0) * zoom + stagePos.x;
-          const top = rect.top + (ann.y || 0) * zoom + stagePos.y;
-          const pad = 4;
+          const fontSize = ann.fontSize || 16;
+
+          // Text-box uses its own x/y/width; arrow-text uses the label anchor.
+          let lx: number, ly: number, w: number, h: number, pad: number;
+          if (ann.type === 'arrow-text') {
+            const lp = arrowTextLabelPos(ann.points || [], ann.text || '', fontSize);
+            lx = lp.x;
+            ly = lp.y;
+            w = 180;
+            h = fontSize + 8;
+            pad = 0;
+          } else {
+            lx = ann.x || 0;
+            ly = ann.y || 0;
+            w = ann.width || 0;
+            h = ann.height || 0;
+            pad = 4;
+          }
+          const left = rect.left + lx * zoom + stagePos.x;
+          const top = rect.top + ly * zoom + stagePos.y;
           return (
             <textarea
               ref={textEditRef}
@@ -1595,15 +1718,15 @@ const EditorWindow: React.FC = () => {
                 position: 'fixed',
                 left,
                 top,
-                width: (ann.width || 0) * zoom,
-                height: (ann.height || 0) * zoom,
+                width: w * zoom,
+                height: h * zoom,
                 padding: pad * zoom,
                 boxSizing: 'border-box',
                 margin: 0,
                 fontFamily: 'Arial, sans-serif',
                 fontSize: (ann.fontSize || 16) * zoom,
                 lineHeight: 1,
-                color: ann.fill || '#000000',
+                color: ann.fill || ann.stroke || '#000000',
                 background: 'transparent',
                 border: '1px dashed #007bff',
                 outline: 'none',
@@ -1612,7 +1735,7 @@ const EditorWindow: React.FC = () => {
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
                 zIndex: 1000,
-                caretColor: ann.fill || '#000000',
+                caretColor: ann.fill || ann.stroke || '#000000',
               }}
             />
           );

@@ -38,6 +38,10 @@ export function GetVersion() {
   return window['go']['main']['App']['GetVersion']();
 }
 
+export function HideWindow() {
+  return window['go']['main']['App']['HideWindow']();
+}
+
 export function IsUploadConfigured() {
   return window['go']['main']['App']['IsUploadConfigured']();
 }
@@ -72,6 +76,10 @@ export function ResumeHotkeys() {
 
 export function SaveImage(arg1, arg2) {
   return window['go']['main']['App']['SaveImage'](arg1, arg2);
+}
+
+export function ShowWindow() {
+  return window['go']['main']['App']['ShowWindow']();
 }
 
 export function TestUploadConnection() {

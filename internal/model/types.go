@@ -75,6 +75,13 @@ type Settings struct {
 	ServerURL string `json:"server_url"`
 	// APIKey is the fasp API key (fsk_live_*) used to authorize uploads.
 	APIKey string `json:"api_key"`
+	// WindowMaximized remembers whether the editor window was maximized so the
+	// next time it opens it restores the same state.
+	WindowMaximized bool `json:"window_maximized"`
+	// WindowWidth/WindowHeight remember the editor window size when it is not
+	// maximized (e.g. manually resized), restored on next open.
+	WindowWidth  int `json:"window_width"`
+	WindowHeight int `json:"window_height"`
 }
 
 // DefaultSettings returns default application settings
