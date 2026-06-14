@@ -2,16 +2,21 @@
 
 ## Version Format
 
-Fasp uses calendar versioning with the format: `vYYYY.MM.PATCH`
+`internal/version/version.go` is the **single source of truth** for the version.
+Fasp uses calendar versioning with the format: `vYY.M.PATCH`
 
-- `YYYY` - Year (e.g., 2025)
-- `MM` - Month (e.g., 12 for December)
+- `YY` - Year, 2 digits (e.g., 26 for 2026)
+- `M` - Month, no leading zero (e.g., 1 for January, 12 for December)
 - `PATCH` - Patch number (starts at 0, increments for bug fixes)
 
 ### Examples
-- `v2025.12.0` - First release in December 2025
-- `v2025.12.1` - First patch in December 2025
-- `v2026.01.0` - First release in January 2026
+- `v26.1.0` - First release in January 2026
+- `v26.1.1` - First patch in January 2026
+- `v26.12.0` - First release in December 2026
+
+The build scripts (`scripts/build.sh`) and the Makefile build targets read this
+value from `version.go` and stamp it into the binary via `-ldflags`, so the value
+in `version.go` is the only thing you edit.
 
 ## How to Update Version
 
@@ -21,7 +26,7 @@ Edit `internal/version/version.go`:
 
 ```go
 var (
-    Version = "v2025.12.1"  // Update this line
+    Version = "v26.1.1"  // Update this line only
     BuildTime = ""
     GitCommit = ""
 )
@@ -29,29 +34,36 @@ var (
 
 ### 2. Build with Version Info
 
-To include build time and git commit in the version:
+The Makefile reads the version from `version.go` and injects build time + git
+commit automatically:
 
 ```bash
-# Get current git commit
-GIT_COMMIT=$(git rev-parse HEAD)
+make build           # current platform
+make build-windows   # windows/amd64
+make build-darwin    # darwin/arm64
+```
 
-# Get current timestamp
-BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
+Equivalent manual command (what the Makefile / build.sh run):
 
-# Build with ldflags
-go build -ldflags "\
-  -X 'github.com/heytonyne/fasp/internal/version.Version=v2025.12.0' \
-  -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
-  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}' \
-" -o bin/fasp
-
-# Or use wails build
+```bash
+VERSION=$(grep 'Version = ' internal/version/version.go | sed 's/.*"\(.*\)".*/\1/')
 wails build -ldflags "\
-  -X 'github.com/heytonyne/fasp/internal/version.Version=v2025.12.0' \
-  -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
-  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}' \
+  -X 'github.com/heytonyne/fasp/internal/version.Version=${VERSION}' \
+  -X 'github.com/heytonyne/fasp/internal/version.BuildTime=$(date -u '+%Y-%m-%d %H:%M:%S')' \
+  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=$(git rev-parse HEAD)' \
 "
 ```
+
+### 3. Tag the release (follows version.go)
+
+```bash
+./scripts/release.sh   # or: make release
+```
+
+Both read the version from `version.go`, tag the current commit, and push the
+tag. They refuse to run if the working tree is dirty or the tag already exists —
+so the flow is: bump `version.go` → commit → `./scripts/release.sh`.
+(Use the script on Windows/Git Bash where `make` isn't installed.)
 
 ### 3. Build for Different Platforms
 
@@ -96,17 +108,20 @@ Version is displayed in:
 
 ## Release Checklist
 
-- [ ] Update version in `internal/version/version.go`
-- [ ] Update CHANGELOG.md with release notes
-- [ ] Build with version info using build script
-- [ ] Test version display in UI
-- [ ] Create git tag: `git tag v2025.12.0`
-- [ ] Push tag: `git push origin v2025.12.0`
-- [ ] Create GitHub release with binaries
+- [ ] Bump version in `internal/version/version.go` (e.g. `v26.1.1`)
+- [ ] Commit the bump
+- [ ] Build & smoke-test (`make build`), verify the version badge in the UI
+- [ ] `make release` (tags the commit with the version.go value and pushes it)
+- [ ] Create the GitHub release for that tag and attach the built binaries
 
 ## Version History
 
-### v2025.12.0 (Current)
+### v26.1.0 (Current)
+- API-key uploads to fasp, configurable server URL
+- Editor: multi-select, text box tool, easier selection/resize/rotate
+- Remembers editor window state
+
+### v25.12.0
 - Initial release
 - Screenshot capture with annotations
 - Crop, rectangle, arrow, text, highlight, blur tools
