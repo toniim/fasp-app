@@ -55,6 +55,35 @@ jobs:
             -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
             -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}'"
 
+      # --- Optional code signing via SignPath (free for OSS) ---
+      # Skipped unless the repo variable SIGNPATH_ORGANIZATION_ID is set, so the
+      # release stays green (publishing unsigned) until SignPath is configured.
+      # To enable, set repo variables SIGNPATH_ORGANIZATION_ID,
+      # SIGNPATH_PROJECT_SLUG, SIGNPATH_POLICY_SLUG and secret SIGNPATH_API_TOKEN.
+      - name: Upload unsigned artifact (for SignPath)
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows
+          path: |
+            build/bin/fasp.exe
+            build/bin/fasp-amd64-installer.exe
+
+      - name: Sign with SignPath
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          # Overwrite the unsigned binaries with the signed ones so the publish
+          # step below uploads the signed versions.
+          output-artifact-directory: build/bin
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
