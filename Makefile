@@ -35,8 +35,8 @@ build-darwin-signed: ## Build for macOS with code signing (preserves screen reco
 sign: ## Sign macOS app (run after build to preserve permissions)
 	@./scripts/sign-macos.sh
 
-build-windows: ## Build for Windows
-	@wails build -platform windows/amd64 -ldflags "$(LDFLAGS)"
+build-windows: ## Build for Windows (NSIS installer; auto-installs WebView2 if missing)
+	@wails build -platform windows/amd64 -nsis -webview2 download -ldflags "$(LDFLAGS)"
 
 test: ## Run all tests
 	@go clean -testcache

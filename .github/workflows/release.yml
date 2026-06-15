@@ -48,7 +48,9 @@ jobs:
           BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
           GIT_COMMIT=$(git rev-parse HEAD)
           echo "Building $VERSION ($GIT_COMMIT)"
-          wails build -platform windows/amd64 -nsis -ldflags "\
+          # -webview2 download: the installer fetches & installs the WebView2
+          # runtime from Microsoft at install time if it isn't already present.
+          wails build -platform windows/amd64 -nsis -webview2 download -ldflags "\
             -X 'github.com/heytonyne/fasp/internal/version.Version=${VERSION}' \
             -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
             -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}'"
