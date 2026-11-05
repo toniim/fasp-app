@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Arrow, Text, Transformer, Line, Circle, Group } from 'react-konva';
 import { useEditorStore } from '../../store/editorStore';
 import { Annotation } from '../../types';
@@ -6,7 +6,7 @@ import Toolbar from './Toolbar';
 import ActionBar from './ActionBar';
 import ZoomBar from './ZoomBar';
 import { GetVersion } from '../../../wailsjs/go/main/App';
-import { fitScale, scaleAnnotation } from '../../utils/editor-geometry';
+import { fitScale, scaleAnnotation, viewportSize, clampPosition, alignToDevicePixels } from '../../utils/editor-geometry';
 import './EditorWindow.css';
 
 const EditorWindow: React.FC = () => {
@@ -34,6 +34,10 @@ const EditorWindow: React.FC = () => {
   const [konvaImage, setKonvaImage] = useState<HTMLImageElement | null>(null);
   const [blurPatternImage, setBlurPatternImage] = useState<HTMLImageElement | null>(null);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
+  // The stage is always the size of the available area; the image is drawn
+  // inside it. A stage sized to the image would clip the capture as soon as
+  // zoom pushes it past the (smaller) image box.
+  const [viewport, setViewport] = useState(() => viewportSize());
   const [scaleRatio, setScaleRatio] = useState(1);
   const [previousScaleRatio, setPreviousScaleRatio] = useState(1);
   const [zoom, setZoom] = useState(1);
@@ -78,14 +82,25 @@ const EditorWindow: React.FC = () => {
       // Fit image to window. applyCrop already rescaled the annotations to
       // this same scale, so they line up with the new image.
       const scale = fitScale(img.width, img.height);
-      setStageSize({
+      const size = {
         width: img.width * scale,
         height: img.height * scale,
-      });
+      };
+      const view = viewportSize();
+      setStageSize(size);
+      setViewport(view);
       setScaleRatio(scale);
-      // Reset zoom/pan after crop
-      setZoom(1);
-      setStagePos({ x: 0, y: 0 });
+
+      // Open at real size (1 image px = 1 device px) instead of a downscaled
+      // fit: that is the only rendering that looks exactly like the capture.
+      // "Fit" is one click away when the user wants the overview.
+      const dpr = window.devicePixelRatio || 1;
+      const realZoom = scale > 0 ? 1 / (scale * dpr) : 1;
+      setZoom(realZoom);
+      setStagePos(clampPosition({ x: 0, y: 0 }, {
+        width: size.width * realZoom,
+        height: size.height * realZoom,
+      }, view));
     };
   }, [image]);
 
@@ -137,16 +152,25 @@ const EditorWindow: React.FC = () => {
         });
       }
 
-      setStageSize({
+      const size = {
         width: konvaImage.width * newScale,
         height: konvaImage.height * newScale,
-      });
+      };
+      const view = viewportSize();
+
+      setStageSize(size);
+      setViewport(view);
       setPreviousScaleRatio(scaleRatio);
       setScaleRatio(newScale);
 
-      // Reset zoom and pan when resizing
-      setZoom(1);
-      setStagePos({ x: 0, y: 0 });
+      // Keep real-size rendering after a resize; re-clamp the position.
+      const dpr = window.devicePixelRatio || 1;
+      const realZoom = newScale > 0 ? 1 / (newScale * dpr) : 1;
+      setZoom(realZoom);
+      setStagePos(clampPosition({ x: 0, y: 0 }, {
+        width: size.width * realZoom,
+        height: size.height * realZoom,
+      }, view));
     };
 
     window.addEventListener('resize', handleResize);
@@ -155,6 +179,13 @@ const EditorWindow: React.FC = () => {
       window.removeEventListener('resize', handleResize);
     };
   }, [konvaImage, scaleRatio, annotations, updateAnnotation]);
+
+  // Put the stage canvas on the device pixel grid; together with the
+  // device-aligned viewport size this keeps the canvas unscaled on screen.
+  useLayoutEffect(() => {
+    const container = stageRef.current?.container();
+    if (container) alignToDevicePixels(container);
+  }, [viewport]);
 
   // Handle scroll: Cmd/Ctrl + Scroll to zoom, regular scroll to pan when zoomed
   useEffect(() => {
@@ -179,19 +210,17 @@ const EditorWindow: React.FC = () => {
           ? Math.min(oldZoom * scaleBy, 3)
           : Math.max(oldZoom / scaleBy, 0.5);
 
-        // When zoom <= 1, center the (down-)scaled image within the stage.
-        // Konva scales the content, not the canvas DOM, so a smaller image
-        // would otherwise stick to the top-left corner. Offset by the empty
-        // margin to keep it centered.
+        // Keep the content inside the viewport: centred when it fits, clamped
+        // to the edges once zoom pushes it past the viewport.
+        const content = {
+          width: stageSize.width * newZoom,
+          height: stageSize.height * newZoom,
+        };
+
         if (newZoom <= 1) {
-          const centeredPos = {
-            x: (stageSize.width * (1 - newZoom)) / 2,
-            y: (stageSize.height * (1 - newZoom)) / 2,
-          };
+          const centered = clampPosition({ x: 0, y: 0 }, content, viewport);
           setZoom(newZoom);
-          setStagePos(centeredPos);
-          stage.position(centeredPos);
-          stage.batchDraw();
+          setStagePos(centered);
           return;
         }
 
@@ -207,7 +236,7 @@ const EditorWindow: React.FC = () => {
         };
 
         setZoom(newZoom);
-        setStagePos(newPos);
+        setStagePos(clampPosition(newPos, content, viewport));
       } else if (zoom > 1) {
         // Regular scroll to pan when zoomed in
         wheelEvent.preventDefault();
@@ -220,14 +249,15 @@ const EditorWindow: React.FC = () => {
           : wheelEvent.deltaX;
         const verticalDelta = wheelEvent.shiftKey ? 0 : wheelEvent.deltaY;
 
-        const newPos = {
-          x: stagePos.x - horizontalDelta,
-          y: stagePos.y - verticalDelta,
+        const content = {
+          width: stageSize.width * zoom,
+          height: stageSize.height * zoom,
         };
 
-        setStagePos(newPos);
-        stage.position(newPos);
-        stage.batchDraw();
+        setStagePos(clampPosition({
+          x: stagePos.x - horizontalDelta,
+          y: stagePos.y - verticalDelta,
+        }, content, viewport));
       }
     };
 
@@ -239,24 +269,21 @@ const EditorWindow: React.FC = () => {
         canvasContainer.removeEventListener('wheel', handleWheel as EventListener);
       };
     }
-  }, [zoom, stagePos]);
+  }, [zoom, stagePos, stageSize, viewport]);
 
   // Center image when zoom <= 1 (from ZoomBar or any source)
+  // Keep the image inside the viewport whenever zoom or the viewport changes
+  // (ZoomBar, Fit / Real Size buttons, window resize).
   useEffect(() => {
-    if (zoom <= 1) {
-      const centeredPos = {
-        x: (stageSize.width * (1 - zoom)) / 2,
-        y: (stageSize.height * (1 - zoom)) / 2,
-      };
-      if (stagePos.x !== centeredPos.x || stagePos.y !== centeredPos.y) {
-        setStagePos(centeredPos);
-        if (stageRef.current) {
-          stageRef.current.position(centeredPos);
-          stageRef.current.batchDraw();
-        }
-      }
-    }
-  }, [zoom, stageSize]);
+    const content = {
+      width: stageSize.width * zoom,
+      height: stageSize.height * zoom,
+    };
+    setStagePos((prev) => {
+      const next = clampPosition(prev, content, viewport);
+      return prev.x === next.x && prev.y === next.y ? prev : next;
+    });
+  }, [zoom, stageSize, viewport]);
 
   // Clear marquee multi-selection when switching tools
   useEffect(() => {
@@ -686,13 +713,14 @@ const EditorWindow: React.FC = () => {
 
     // Handle panning
     if (isPanning) {
-      const newPos = {
+      const content = {
+        width: stageSize.width * zoom,
+        height: stageSize.height * zoom,
+      };
+      setStagePos(clampPosition({
         x: stagePos.x + e.evt.movementX,
         y: stagePos.y + e.evt.movementY,
-      };
-      setStagePos(newPos);
-      stage.position(newPos);
-      stage.batchDraw();
+      }, content, viewport));
       return;
     }
 
@@ -1478,8 +1506,8 @@ const EditorWindow: React.FC = () => {
       <div className="editor-canvas">
         <Stage
           ref={stageRef as any}
-          width={stageSize.width}
-          height={stageSize.height}
+          width={viewport.width}
+          height={viewport.height}
           scaleX={zoom}
           scaleY={zoom}
           x={stagePos.x}
@@ -1714,7 +1742,7 @@ const EditorWindow: React.FC = () => {
           );
         })()}
       </div>
-      <ActionBar stageRef={stageRef} scaleRatio={scaleRatio} />
+      <ActionBar stageRef={stageRef} scaleRatio={scaleRatio} stageSize={stageSize} />
       <ZoomBar zoom={zoom} onZoomChange={setZoom} scaleRatio={scaleRatio} />
       {version && (
         <div className="version-badge">

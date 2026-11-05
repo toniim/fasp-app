@@ -59,6 +59,17 @@
   color: white;
 }
 
+/* Read-only percentage: not clickable, so it can't silently reset the view. */
+.zoom-readout {
+  cursor: default;
+  user-select: none;
+}
+
+.zoom-readout:hover {
+  background: transparent;
+  color: var(--color-text-tertiary);
+}
+
 .zoom-divider {
   width: 1px;
   height: 16px;
