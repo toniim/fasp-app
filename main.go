@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"time"
 
@@ -561,14 +562,19 @@ func (a *App) HideWindow() {
 	runtime.WindowHide(a.ctx)
 }
 
-// onBeforeClose runs when the window's close button (X) is clicked or on quit.
-// We save the window state, then either allow the quit (from tray/menu) or hide
-// the window and keep running (X button). HideWindowOnClose is intentionally
-// NOT used because it hides the window WITHOUT invoking this hook, so the state
-// would never get saved.
+// onBeforeClose saves the window state, then decides whether the app may quit.
+//
+// macOS: Wails routes the close button AND every app termination (Cmd+Q, Dock
+// "Quit", "Quit & Reopen" after a permission grant, logout, SIGTERM) through
+// this hook, with no way to tell them apart. HideWindowOnClose is therefore on
+// for macOS, so the close button hides the app without reaching this hook, and
+// every call that does reach it is a real quit.
+//
+// Windows: the close button reaches this hook, so it hides the window and keeps
+// running unless the quit came from the tray/menu.
 func (a *App) onBeforeClose(_ context.Context) bool {
 	a.saveWindowState()
-	if a.quitting {
+	if a.quitting || goruntime.GOOS == "darwin" {
 		return false // allow the app to quit
 	}
 	runtime.WindowHide(a.ctx)
@@ -587,12 +593,13 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:             "Fasp - Screenshot & Annotation",
+		Title:       "Fasp - Screenshot & Annotation",
 		Width:       1024,
 		Height:      768,
 		StartHidden: false, // TEMP: Show window for testing tray
-		// HideWindowOnClose is NOT set: onBeforeClose handles hide-on-close so we
-		// can save the window state before hiding.
+		// See onBeforeClose: on macOS this keeps the close button from being
+		// treated like a quit; on Windows onBeforeClose hides the window itself.
+		HideWindowOnClose: goruntime.GOOS == "darwin",
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
