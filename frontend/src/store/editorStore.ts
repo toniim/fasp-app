@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Annotation, AnnotationTool, EditorState, CropRegion } from '../types';
+import { fitScale, scaleAnnotation } from '../utils/editor-geometry';
 
 interface EditorStore extends EditorState {
   setImage: (image: string) => void;
@@ -118,6 +119,15 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       const newHistory = imageHistory.slice(0, imageHistoryStep + 1);
       newHistory.push(croppedBase64);
 
+      // The cropped image is displayed at its own fit scale (usually larger,
+      // since it is smaller than the original), so annotations must move from
+      // the old stage scale to the new one or they shrink and drift off the
+      // content they marked. Use the canvas size: it is what the editor loads
+      // next, after the browser truncates fractional dimensions.
+      const rescale = canvas.width > 0 && canvas.height > 0
+        ? fitScale(canvas.width, canvas.height) / scaleRatio
+        : 1;
+
       // Adjust annotations to new crop coordinates
       // Keep annotations that are at least partially within the crop region
       const adjustedAnnotations = annotations.map(ann => {
@@ -160,7 +170,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
                  annBottom >= 0 && ann.y <= normalizedCrop.height;
         }
         return true;
-      });
+      }).map(ann => scaleAnnotation(ann, rescale));
 
       // Update image and keep adjusted annotations
       set({

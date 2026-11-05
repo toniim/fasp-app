@@ -6,6 +6,7 @@ import Toolbar from './Toolbar';
 import ActionBar from './ActionBar';
 import ZoomBar from './ZoomBar';
 import { GetVersion } from '../../../wailsjs/go/main/App';
+import { fitScale, scaleAnnotation } from '../../utils/editor-geometry';
 import './EditorWindow.css';
 
 const EditorWindow: React.FC = () => {
@@ -74,10 +75,9 @@ const EditorWindow: React.FC = () => {
     img.src = `data:image/png;base64,${image}`;
     img.onload = () => {
       setKonvaImage(img);
-      // Fit image to window
-      const maxWidth = window.innerWidth - 40;
-      const maxHeight = window.innerHeight - 140;
-      const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+      // Fit image to window. applyCrop already rescaled the annotations to
+      // this same scale, so they line up with the new image.
+      const scale = fitScale(img.width, img.height);
       setStageSize({
         width: img.width * scale,
         height: img.height * scale,
@@ -127,40 +127,13 @@ const EditorWindow: React.FC = () => {
 
     const handleResize = () => {
       // Recalculate stage size to fit new window dimensions
-      const maxWidth = window.innerWidth - 40;
-      const maxHeight = window.innerHeight - 140;
-      const newScale = Math.min(maxWidth / konvaImage.width, maxHeight / konvaImage.height, 1);
-
-      // Calculate scale factor for annotations
-      const scaleFactor = newScale / scaleRatio;
+      const newScale = fitScale(konvaImage.width, konvaImage.height);
 
       // Scale all existing annotations
+      const scaleFactor = newScale / scaleRatio;
       if (scaleFactor !== 1 && annotations.length > 0) {
         annotations.forEach(ann => {
-          const updates: Partial<Annotation> = {};
-
-          // Scale position
-          if (ann.x !== undefined) updates.x = ann.x * scaleFactor;
-          if (ann.y !== undefined) updates.y = ann.y * scaleFactor;
-
-          // Scale dimensions
-          if (ann.width !== undefined) updates.width = ann.width * scaleFactor;
-          if (ann.height !== undefined) updates.height = ann.height * scaleFactor;
-
-          // Scale stroke width
-          if (ann.strokeWidth !== undefined) updates.strokeWidth = ann.strokeWidth * scaleFactor;
-
-          // Scale points (for arrows, lines)
-          if (ann.points) {
-            updates.points = ann.points.map(p => p * scaleFactor);
-          }
-
-          // Scale font size (for text)
-          if (ann.fontSize) {
-            updates.fontSize = ann.fontSize * scaleFactor;
-          }
-
-          updateAnnotation(ann.id, updates);
+          updateAnnotation(ann.id, scaleAnnotation(ann, scaleFactor));
         });
       }
 
