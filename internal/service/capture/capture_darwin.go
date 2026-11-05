@@ -2,6 +2,34 @@
 
 package capture
 
+/*
+#cgo LDFLAGS: -framework CoreGraphics -framework CoreFoundation
+#include <CoreGraphics/CoreGraphics.h>
+
+// cursorDisplayIndex returns the 1-based position of the display under the
+// mouse cursor in the active display list, the same numbering `screencapture -D`
+// uses (1 is the main display). It returns 0 when the display cannot be found.
+static int cursorDisplayIndex(void) {
+    CGEventRef ev = CGEventCreate(NULL);
+    if (ev == NULL) return 0;
+    CGPoint p = CGEventGetLocation(ev);
+    CFRelease(ev);
+
+    CGDirectDisplayID under;
+    uint32_t found = 0;
+    if (CGGetDisplaysWithPoint(p, 1, &under, &found) != kCGErrorSuccess || found == 0) return 0;
+
+    CGDirectDisplayID list[32];
+    uint32_t count = 0;
+    if (CGGetActiveDisplayList(32, list, &count) != kCGErrorSuccess) return 0;
+    for (uint32_t i = 0; i < count; i++) {
+        if (list[i] == under) return (int)i + 1;
+    }
+    return 0;
+}
+*/
+import "C"
+
 import (
 	"bytes"
 	"encoding/base64"
@@ -10,6 +38,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/heytonyne/fasp/internal/model"
@@ -28,7 +57,8 @@ func (s *serviceImpl) CaptureFullscreen() (*model.CaptureResult, error) {
 	return s.CaptureActiveDisplay()
 }
 
-// CaptureActiveDisplay captures the active display (primary display)
+// CaptureActiveDisplay captures the display the mouse cursor is on, falling
+// back to the main display when it cannot be determined.
 func (s *serviceImpl) CaptureActiveDisplay() (*model.CaptureResult, error) {
 	// Create temp file
 	tmpDir := os.TempDir()
@@ -37,8 +67,13 @@ func (s *serviceImpl) CaptureActiveDisplay() (*model.CaptureResult, error) {
 
 	// Use macOS screencapture command. -x = silent, no shutter sound. The
 	// cursor is intentionally not captured (-C omitted) so it is never baked
-	// into the screenshot.
-	cmd := exec.Command("screencapture", "-x", "-t", "png", tmpFile)
+	// into the screenshot. Without -D, screencapture writes only the main
+	// display when given a single output file.
+	args := []string{"-x", "-t", "png"}
+	if idx := int(C.cursorDisplayIndex()); idx > 0 {
+		args = append(args, "-D", strconv.Itoa(idx))
+	}
+	cmd := exec.Command("screencapture", append(args, tmpFile)...)
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("failed to capture screenshot: %w", err)
 	}

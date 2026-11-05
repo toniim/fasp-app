@@ -7,7 +7,7 @@ type Service interface {
 	// CaptureFullscreen captures the entire screen of the active display
 	CaptureFullscreen() (*model.CaptureResult, error)
 
-	// CaptureActiveDisplay captures the active display
+	// CaptureActiveDisplay captures the display the mouse cursor is on
 	CaptureActiveDisplay() (*model.CaptureResult, error)
 
 	// CaptureAllDisplays captures all connected displays

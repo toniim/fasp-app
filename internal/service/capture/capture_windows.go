@@ -29,20 +29,20 @@ func (s *serviceImpl) CaptureFullscreen() (*model.CaptureResult, error) {
 	return s.CaptureActiveDisplay()
 }
 
-// CaptureActiveDisplay captures the active display (primary display)
+// CaptureActiveDisplay captures the screen the mouse cursor is on
 func (s *serviceImpl) CaptureActiveDisplay() (*model.CaptureResult, error) {
 	// Create temp file
 	tmpDir := os.TempDir()
 	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("fasp_capture_%d.png", time.Now().UnixNano()))
 	defer os.Remove(tmpFile)
 
-	// Use PowerShell to capture the primary screen. The destination path is
+	// Use PowerShell to capture the screen under the cursor. The destination path is
 	// passed through the environment instead of being interpolated into the
 	// script, so temp paths containing quotes can't break or inject script code.
 	psScript := `
 		Add-Type -AssemblyName System.Windows.Forms
 		Add-Type -AssemblyName System.Drawing
-		$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+		$screen = [System.Windows.Forms.Screen]::FromPoint([System.Windows.Forms.Cursor]::Position).Bounds
 		$bitmap = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height
 		$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
 		$graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
