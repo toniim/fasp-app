@@ -219,19 +219,30 @@ func (a *App) setupHotkeys() {
 	// Stop existing hotkey service if running
 	a.hotkeyService.Stop()
 
-	// Register capture hotkey BEFORE starting
-	if captureKey, ok := settings.Hotkeys["capture_fullscreen"]; ok && captureKey != "" {
-		println("Setting up hotkey:", captureKey)
-		err := a.hotkeyService.Register(captureKey, func() {
-			println("🔥 Hotkey pressed! Emitting event...")
-			// Trigger capture when hotkey is pressed
-			runtime.EventsEmit(a.ctx, "hotkey:capture")
-		})
-		if err != nil {
-			println("Failed to register hotkey:", err.Error())
+	// Register every configured capture hotkey BEFORE starting the listener.
+	// capture_region used to be ignored here, so the setting did nothing.
+	registered := 0
+	registerHotkey := func(settingKey, eventName string) {
+		combo, ok := settings.Hotkeys[settingKey]
+		if !ok || combo == "" {
 			return
 		}
-	} else {
+
+		println("Setting up hotkey:", settingKey, "=", combo)
+		if err := a.hotkeyService.Register(combo, func() {
+			println("🔥 Hotkey pressed:", settingKey)
+			runtime.EventsEmit(a.ctx, eventName)
+		}); err != nil {
+			println("Failed to register hotkey", settingKey, ":", err.Error())
+			return
+		}
+		registered++
+	}
+
+	registerHotkey("capture_fullscreen", "hotkey:capture")
+	registerHotkey("capture_region", "hotkey:capture_region")
+
+	if registered == 0 {
 		println("No capture hotkey configured")
 		return
 	}
