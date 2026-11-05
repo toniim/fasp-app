@@ -4,16 +4,22 @@ import './ZoomBar.css';
 interface ZoomBarProps {
   zoom: number;
   onZoomChange: (zoom: number) => void;
-  // Base scale applied to fit the image into the viewport. Real (1:1) pixel
-  // size is reached when zoom = 1 / scaleRatio.
+  // Base scale applied to fit the image into the viewport. One image pixel
+  // equals one physical screen pixel when zoom = 1 / (scaleRatio * dpr).
   scaleRatio: number;
 }
 
 const ZoomBar: React.FC<ZoomBarProps> = ({ zoom, onZoomChange, scaleRatio }) => {
-  // Real-size zoom: cancel out the fit-scale so 1 image px === 1 screen px.
-  const realSizeZoom = scaleRatio > 0 ? 1 / scaleRatio : 1;
+  // Screens are often scaled (e.g. Windows at 110%): a CSS pixel is not a
+  // device pixel, so "1:1" has to account for devicePixelRatio or the preview
+  // is silently upscaled ~10% and looks soft.
+  const dpr = window.devicePixelRatio || 1;
+  const realSizeZoom = scaleRatio > 0 ? 1 / (scaleRatio * dpr) : 1;
   // Allow the slider to reach real size even when it's beyond the default max.
   const maxZoom = Math.max(3, realSizeZoom);
+
+  // What the user actually sees: share of the capture's native pixels on screen.
+  const effectivePercent = Math.round(zoom * scaleRatio * dpr * 100);
 
   const handleZoomIn = () => {
     const newZoom = Math.min(zoom + 0.1, maxZoom);
@@ -54,14 +60,20 @@ const ZoomBar: React.FC<ZoomBarProps> = ({ zoom, onZoomChange, scaleRatio }) => 
       <button className="zoom-button" onClick={handleZoomIn} title="Zoom In">
         +
       </button>
-      <button className="zoom-button zoom-reset" onClick={handleFit} title="Reset Zoom">
-        {Math.round(zoom * 100)}%
-      </button>
+      {/* Display only: it used to be a "reset to fit" button, so clicking the
+          "100%" label silently dropped the view back to the downscaled fit. */}
+      <span className="zoom-button zoom-reset zoom-readout" title="Share of the capture's native pixels on screen">
+        {effectivePercent}%
+      </span>
       <div className="zoom-divider" />
       <button className="zoom-text-button" onClick={handleFit} title="Fit to window">
         Fit
       </button>
-      <button className="zoom-text-button" onClick={handleRealSize} title="Real size (1:1)">
+      <button
+        className="zoom-text-button"
+        onClick={handleRealSize}
+        title="Real size: 1 image pixel = 1 screen pixel"
+      >
         Real Size
       </button>
     </div>

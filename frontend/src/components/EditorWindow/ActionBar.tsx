@@ -42,6 +42,9 @@ const Icons = {
 interface ActionBarProps {
   stageRef: React.RefObject<any>;
   scaleRatio: number;
+  // Size of the image in stage coordinates. The stage itself is the viewport,
+  // so exporting has to crop to this box (and drop zoom/pan first).
+  stageSize: { width: number; height: number };
 }
 
 interface ToastState {
@@ -57,24 +60,44 @@ const errorText = (error: unknown): string => {
   return text === '' ? 'unknown error' : text;
 };
 
-const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
+const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio, stageSize }) => {
   const { image, cropRegion, applyCrop, setCropRegion } = useEditorStore();
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
 
-  // The Konva stage is displayed downscaled by `scaleRatio` to fit the editor
+  // The image is displayed downscaled by `scaleRatio` to fit the editor
   // viewport. Exporting at a fixed pixelRatio would bake in that downscale and
   // produce a sub-native (blurry) image. Re-rendering at 1/scaleRatio restores
   // the original capture resolution from the full-res source image.
   const exportPixelRatio = scaleRatio > 0 ? 1 / scaleRatio : 1;
 
-  // Export the current stage (image + all annotations) to a PNG data URL at
-  // native resolution. Called lazily at action time so the latest annotations
-  // are always included.
+  // Export the image + annotations at native resolution. The stage is the
+  // viewport (it may be zoomed and panned), so reset the transform, crop to the
+  // image box and restore afterwards.
   const exportDataURL = useCallback((): string => {
-    if (!stageRef.current) return '';
-    return stageRef.current.toDataURL({ pixelRatio: exportPixelRatio });
-  }, [stageRef, exportPixelRatio]);
+    const stage = stageRef.current;
+    if (!stage) return '';
+
+    const prevScale = { x: stage.scaleX(), y: stage.scaleY() };
+    const prevPos = { x: stage.x(), y: stage.y() };
+
+    stage.scale({ x: 1, y: 1 });
+    stage.position({ x: 0, y: 0 });
+
+    const url = stage.toDataURL({
+      x: 0,
+      y: 0,
+      width: stageSize.width,
+      height: stageSize.height,
+      pixelRatio: exportPixelRatio,
+    });
+
+    stage.scale(prevScale);
+    stage.position(prevPos);
+    stage.batchDraw();
+
+    return url;
+  }, [stageRef, exportPixelRatio, stageSize]);
 
   const handleSave = async () => {
     if (!stageRef.current || !image) return;
