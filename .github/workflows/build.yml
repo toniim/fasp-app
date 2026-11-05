@@ -46,6 +46,14 @@ jobs:
         shell: bash
         run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
+      # main.go embeds frontend/dist, so the Go package cannot even be built
+      # (or tested) until the frontend has been compiled once.
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: Run Go tests
         run: go test ./...
 
