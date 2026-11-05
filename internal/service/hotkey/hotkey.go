@@ -270,17 +270,21 @@ func parseKey(keyStr string) (hotkey.Key, error) {
 		return hotkey.KeyF20, nil
 	}
 
-	// Letters
-	if len(keyStr) == 1 && keyStr[0] >= 'a' && keyStr[0] <= 'z' {
-		return hotkey.Key(int32(keyStr[0]-'a') + int32(hotkey.KeyA)), nil
+	// Letters and digits. Look them up instead of offsetting from KeyA/Key0:
+	// macOS virtual key codes are not in alphabetical order (A=0, S=1, D=2).
+	if len(keyStr) == 1 {
+		if c := keyStr[0]; c >= 'a' && c <= 'z' {
+			return letterKeys[c-'a'], nil
+		} else if c >= '0' && c <= '9' {
+			return digitKeys[c-'0'], nil
+		}
 	}
 
-	// Numbers
-	if len(keyStr) == 1 && keyStr[0] >= '0' && keyStr[0] <= '9' {
-		return hotkey.Key(int32(keyStr[0]-'0') + int32(hotkey.Key0)), nil
+	// Keys whose code differs per platform (Print Screen, Home, End, ...).
+	if k, ok := platformKeys[keyStr]; ok {
+		return k, nil
 	}
 
-	// Special keys
 	switch keyStr {
 	case "space":
 		return hotkey.KeySpace, nil
@@ -300,30 +304,20 @@ func parseKey(keyStr string) (hotkey.Key, error) {
 		return hotkey.KeyUp, nil
 	case "down":
 		return hotkey.KeyDown, nil
-	// Additional special keys
-	case "printscreen", "prtsc", "prtscn", "print":
-		return hotkey.Key(0x2C), nil // VK_SNAPSHOT on Windows
-	case "help":
-		return hotkey.Key(0x72), nil
-	case "home":
-		return hotkey.Key(0x73), nil
-	case "pageup":
-		return hotkey.Key(0x74), nil
-	case "forwarddelete", "del":
-		return hotkey.Key(0x75), nil
-	case "end":
-		return hotkey.Key(0x77), nil
-	case "pagedown":
-		return hotkey.Key(0x79), nil
-	case "insert":
-		return hotkey.Key(0x2D), nil // VK_INSERT
-	case "pause":
-		return hotkey.Key(0x13), nil // VK_PAUSE
-	case "scrolllock":
-		return hotkey.Key(0x91), nil // VK_SCROLL
-	case "numlock":
-		return hotkey.Key(0x90), nil // VK_NUMLOCK
 	}
 
 	return 0, fmt.Errorf("unknown key: %s", keyStr)
+}
+
+var letterKeys = [26]hotkey.Key{
+	hotkey.KeyA, hotkey.KeyB, hotkey.KeyC, hotkey.KeyD, hotkey.KeyE, hotkey.KeyF,
+	hotkey.KeyG, hotkey.KeyH, hotkey.KeyI, hotkey.KeyJ, hotkey.KeyK, hotkey.KeyL,
+	hotkey.KeyM, hotkey.KeyN, hotkey.KeyO, hotkey.KeyP, hotkey.KeyQ, hotkey.KeyR,
+	hotkey.KeyS, hotkey.KeyT, hotkey.KeyU, hotkey.KeyV, hotkey.KeyW, hotkey.KeyX,
+	hotkey.KeyY, hotkey.KeyZ,
+}
+
+var digitKeys = [10]hotkey.Key{
+	hotkey.Key0, hotkey.Key1, hotkey.Key2, hotkey.Key3, hotkey.Key4,
+	hotkey.Key5, hotkey.Key6, hotkey.Key7, hotkey.Key8, hotkey.Key9,
 }
