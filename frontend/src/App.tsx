@@ -5,7 +5,13 @@ import { useEditorStore } from './store/editorStore';
 import EditorWindow from './components/EditorWindow/EditorWindow';
 import SettingsWindow from './components/SettingsWindow/SettingsWindow';
 import PermissionWarning from './components/PermissionWarning/PermissionWarning';
-import { EventsOn } from '../wailsjs/runtime/runtime';
+import Toast from './components/Toast/Toast';
+import { EventsOn, WindowHide } from '../wailsjs/runtime/runtime';
+
+interface ToastState {
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
 
 // SVG Icons - Clean, macOS-style
 const Icons = {
@@ -34,10 +40,17 @@ function App() {
   const { image, setImage } = useEditorStore();
   const [isCapturing, setIsCapturing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   // Listen for hotkey events
   useEffect(() => {
     const unsubscribeCapture = EventsOn('hotkey:capture', () => {
+      handleCapture();
+    });
+
+    // Region capture uses the same flow: the capture opens in the crop tool,
+    // so the user drags the part of the screen they want to keep.
+    const unsubscribeRegion = EventsOn('hotkey:capture_region', () => {
       handleCapture();
     });
 
@@ -52,6 +65,7 @@ function App() {
 
     return () => {
       if (unsubscribeCapture) unsubscribeCapture();
+      if (unsubscribeRegion) unsubscribeRegion();
       if (unsubscribeSettings) unsubscribeSettings();
       if (unsubscribeOpenImage) unsubscribeOpenImage();
     };
@@ -61,7 +75,11 @@ function App() {
     try {
       setIsCapturing(true);
 
-      // Capture screenshot immediately without hiding window
+      // Hide our own window first, otherwise the app ends up in its own
+      // screenshot. Give the compositor a beat to actually take it off screen.
+      WindowHide();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
       const result = await CaptureActiveDisplay();
 
       // Show window with the captured image
@@ -74,7 +92,7 @@ function App() {
       // Show window even if capture failed
       ShowWindow();
 
-      alert('Failed to capture screenshot: ' + error);
+      setToast({ message: `Failed to capture screenshot: ${error}`, type: 'error' });
     } finally {
       setIsCapturing(false);
     }
@@ -100,7 +118,7 @@ function App() {
       setImage(imageData);
     } catch (error) {
       console.error('Failed to open image:', error);
-      alert('Failed to open image: ' + error);
+      setToast({ message: `Failed to open image: ${error}`, type: 'error' });
     }
   };
 
@@ -130,6 +148,14 @@ function App() {
       )}
 
       {showSettings && <SettingsWindow onClose={() => setShowSettings(false)} />}
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }

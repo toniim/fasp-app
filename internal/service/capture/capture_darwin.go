@@ -35,8 +35,10 @@ func (s *serviceImpl) CaptureActiveDisplay() (*model.CaptureResult, error) {
 	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("fasp_capture_%d.png", time.Now().UnixNano()))
 	defer os.Remove(tmpFile)
 
-	// Use macOS screencapture command
-	cmd := exec.Command("screencapture", "-x", "-C", tmpFile)
+	// Use macOS screencapture command. -x = silent, no shutter sound. The
+	// cursor is intentionally not captured (-C omitted) so it is never baked
+	// into the screenshot.
+	cmd := exec.Command("screencapture", "-x", "-t", "png", tmpFile)
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("failed to capture screenshot: %w", err)
 	}
