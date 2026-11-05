@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,7 +16,9 @@ import (
 	"github.com/heytonyne/fasp/internal/service/file"
 	"github.com/heytonyne/fasp/internal/service/hotkey"
 	"github.com/heytonyne/fasp/internal/service/permission"
+	"github.com/heytonyne/fasp/internal/service/recents"
 	"github.com/heytonyne/fasp/internal/service/settings"
+	"github.com/heytonyne/fasp/internal/service/shell"
 	"github.com/heytonyne/fasp/internal/service/startup"
 	"github.com/heytonyne/fasp/internal/service/upload"
 	"github.com/heytonyne/fasp/internal/tray"
@@ -50,6 +53,7 @@ type App struct {
 	clipboardService  clipboard.Service
 	startupService    startup.Service
 	uploadService     upload.Service
+	recentsService    recents.Service
 	trayManager       tray.Manager
 	quitting          bool
 }
@@ -73,6 +77,7 @@ func (a *App) startup(ctx context.Context) {
 	a.clipboardService = clipboard.New()
 	a.startupService = startup.New()
 	a.uploadService = upload.New(a.settingsService)
+	a.recentsService = recents.New()
 
 	// Setup hotkeys from settings
 	a.setupHotkeys()
@@ -87,8 +92,8 @@ func (a *App) setupTray() {
 	a.trayManager = tray.NewManager()
 	println("[DEBUG] tray.NewManager() returned:", a.trayManager)
 
-	err := a.trayManager.Setup(func(action tray.Action) {
-		println("[DEBUG] Tray action received:", action)
+	err := a.trayManager.Setup(func(action tray.Action, arg string) {
+		println("[DEBUG] Tray action received:", action, arg)
 		switch action {
 		case tray.ActionCapture:
 			// Trigger screenshot capture
@@ -110,6 +115,28 @@ func (a *App) setupTray() {
 			// Open settings window
 			runtime.EventsEmit(a.ctx, "open:settings")
 
+		case tray.ActionOpenRecent:
+			if err := shell.Open(arg); err != nil {
+				println("[error] open recent:", err.Error())
+			}
+
+		case tray.ActionOpenRecentsFolder:
+			folder := arg
+			if folder == "" && a.recentsService != nil {
+				// macOS sends no argument: fall back to the newest saved file.
+				folder, _ = a.recentsService.Folder()
+			}
+			if folder == "" {
+				folder, _ = a.fileService.GetDefaultSavePath()
+			}
+			if folder == "" {
+				println("[error] open recents folder: no folder to open")
+				break
+			}
+			if err := shell.Open(folder); err != nil {
+				println("[error] open recents folder:", err.Error())
+			}
+
 		case tray.ActionQuit:
 			// Quit application
 			a.quitApp()
@@ -120,6 +147,9 @@ func (a *App) setupTray() {
 		println("[ERROR] Failed to setup tray:", err.Error())
 	} else {
 		println("[DEBUG] Tray setup completed successfully")
+
+		// Push the stored recents as soon as the menu exists.
+		a.refreshTrayRecents()
 
 		// Set tray icon - delay to ensure status item is created first
 		go func() {
@@ -296,7 +326,85 @@ func (a *App) ReadImageFile(path string) (string, error) {
 
 // SaveImage saves an image to disk
 func (a *App) SaveImage(options *model.SaveOptions, data []byte) error {
-	return a.fileService.SaveImage(options, data)
+	if err := a.fileService.SaveImage(options, data); err != nil {
+		println("[error] SaveImage:", err.Error())
+		return err
+	}
+	if options != nil {
+		a.recordRecent(options.Path)
+	}
+	return nil
+}
+
+// recordRecent remembers a saved file and refreshes the tray "Recents" submenu.
+func (a *App) recordRecent(path string) {
+	if a.recentsService == nil || path == "" {
+		return
+	}
+	if err := a.recentsService.Add(path); err != nil {
+		println("[error] record recent:", err.Error())
+		return
+	}
+	a.refreshTrayRecents()
+}
+
+// refreshTrayRecents pushes the current recent list to the tray menu.
+func (a *App) refreshTrayRecents() {
+	if a.recentsService == nil || a.trayManager == nil {
+		return
+	}
+
+	paths, err := a.recentsService.List()
+	if err != nil {
+		println("[error] list recents:", err.Error())
+	}
+	if err := a.trayManager.SetRecents(paths); err != nil {
+		println("[error] set tray recents:", err.Error())
+	}
+}
+
+// QuickSaveImage saves image data to the configured default folder (falling
+// back to the platform default) using a timestamped filename, and returns the
+// full path that was written. The path is resolved in Go so the frontend never
+// has to guess a platform-specific location.
+func (a *App) QuickSaveImage(data []byte) (string, error) {
+	settings, err := a.settingsService.GetAll()
+	if err != nil {
+		return "", fmt.Errorf("failed to read settings: %w", err)
+	}
+
+	dir := settings.DefaultSavePath
+	if dir == "" {
+		dir, err = a.fileService.GetDefaultSavePath()
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve default save folder: %w", err)
+		}
+	}
+
+	base := strings.TrimSuffix(filepath.Join(dir, a.fileService.GenerateFilename("png")), ".png")
+	path := base + ".png"
+	// Two quick saves can land in the same second (the filename has 1s
+	// resolution), so never overwrite an existing file.
+	for i := 1; ; i++ {
+		if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
+			break
+		}
+		path = fmt.Sprintf("%s_%d.png", base, i)
+	}
+
+	options := &model.SaveOptions{
+		Path:    path,
+		Format:  "png",
+		Quality: 90,
+	}
+	if err := a.fileService.SaveImage(options, data); err != nil {
+		println("[error] QuickSaveImage:", err.Error())
+		return "", fmt.Errorf("failed to save %s: %w", path, err)
+	}
+
+	a.recordRecent(path)
+
+	return path, nil
 }
 
 // CopyImageToClipboard copies image data to clipboard

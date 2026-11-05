@@ -58,6 +58,10 @@ export function PauseHotkeys() {
   return window['go']['main']['App']['PauseHotkeys']();
 }
 
+export function QuickSaveImage(arg1) {
+  return window['go']['main']['App']['QuickSaveImage'](arg1);
+}
+
 export function ReadImageFile(arg1) {
   return window['go']['main']['App']['ReadImageFile'](arg1);
 }

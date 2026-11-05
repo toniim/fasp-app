@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { SaveImage, OpenSaveDialog, GenerateFilename, CopyImageToClipboard, GetSettings, HideWindow } from '../../../wailsjs/go/main/App';
+import { SaveImage, QuickSaveImage, OpenSaveDialog, GenerateFilename, CopyImageToClipboard, HideWindow } from '../../../wailsjs/go/main/App';
 import { useEditorStore } from '../../store/editorStore';
 import Toast from '../Toast/Toast';
 import { UploadButton } from './UploadButton';
@@ -48,6 +48,14 @@ interface ToastState {
   message: string;
   type: 'success' | 'error' | 'info';
 }
+
+// Wails rejects with the Go error string rather than an Error instance, so
+// unwrap both shapes instead of swallowing the reason.
+const errorText = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  const text = String(error ?? '').trim();
+  return text === '' ? 'unknown error' : text;
+};
 
 const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
   const { image, cropRegion, applyCrop, setCropRegion } = useEditorStore();
@@ -112,7 +120,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
       }, 1500); // Wait for toast to be visible
     } catch (error) {
       console.error('Failed to save screenshot:', error);
-      setToast({ message: 'Failed to save screenshot', type: 'error' });
+      setToast({ message: `Save failed: ${errorText(error)}`, type: 'error' });
     } finally {
       setIsSaving(false);
     }
@@ -142,7 +150,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
       }, 1500); // Wait for toast to be visible
     } catch (error) {
       console.error('Failed to copy to clipboard:', error);
-      setToast({ message: 'Failed to copy to clipboard', type: 'error' });
+      setToast({ message: `Copy failed: ${errorText(error)}`, type: 'error' });
     }
   };
 
@@ -179,33 +187,14 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
       // Remove data URL prefix to get base64
       const base64Data = dataURL.replace(/^data:image\/\w+;base64,/, '');
 
-      // Get settings for default save path
-      const settings = await GetSettings();
-      let defaultPath = settings.default_save_path;
-
-      // If no default path, use home directory
-      if (!defaultPath) {
-        defaultPath = '/Users/Shared/Fasp'; // Fallback path
-      }
-
-      // Generate filename
-      const filename = await GenerateFilename('png');
-      const savePath = `${defaultPath}/${filename}`;
-
       // Convert base64 to bytes
       const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
 
-      // Save image
-      await SaveImage(
-        {
-          path: savePath,
-          format: 'png',
-          quality: 90,
-        },
-        Array.from(bytes)
-      );
+      // Go resolves the folder (configured default, else platform default),
+      // builds the filename and saves — no platform path guessing here.
+      const savedPath = await QuickSaveImage(Array.from(bytes));
 
-      setToast({ message: `Saved to ${filename}`, type: 'success' });
+      setToast({ message: `Saved to ${savedPath}`, type: 'success' });
 
       // Close window after successful quick save
       setTimeout(() => {
@@ -213,7 +202,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, scaleRatio }) => {
       }, 1500); // Wait for toast to be visible
     } catch (error) {
       console.error('Failed to quick save:', error);
-      setToast({ message: 'Failed to quick save', type: 'error' });
+      setToast({ message: `Quick save failed: ${errorText(error)}`, type: 'error' });
     } finally {
       setIsSaving(false);
     }
