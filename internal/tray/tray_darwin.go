@@ -59,6 +59,33 @@ func (m *darwinManager) SetIconFromFile(iconPath string) error {
 	return nil
 }
 
+// SetRecents replaces the contents of the "Recents" submenu.
+func (m *darwinManager) SetRecents(paths []string) error {
+	if !m.initialized {
+		return nil
+	}
+
+	if len(paths) == 0 {
+		C.tray_set_recents(nil, 0)
+		return nil
+	}
+
+	cPaths := make([]*C.char, len(paths))
+	for i, path := range paths {
+		cPaths[i] = C.CString(path)
+	}
+	defer func() {
+		for _, cPath := range cPaths {
+			C.free(unsafe.Pointer(cPath))
+		}
+	}()
+
+	// tray_set_recents copies the strings before returning.
+	C.tray_set_recents(&cPaths[0], C.int(len(cPaths)))
+
+	return nil
+}
+
 func (m *darwinManager) Quit() {
 	if !m.initialized {
 		return
@@ -71,41 +98,55 @@ func (m *darwinManager) Quit() {
 //export tray_onCapture
 func tray_onCapture() {
 	if globalCallback != nil {
-		go globalCallback(ActionCapture)
+		go globalCallback(ActionCapture, "")
 	}
 }
 
 //export tray_onOpenImage
 func tray_onOpenImage() {
 	if globalCallback != nil {
-		go globalCallback(ActionOpenImage)
+		go globalCallback(ActionOpenImage, "")
 	}
 }
 
 //export tray_onShow
 func tray_onShow() {
 	if globalCallback != nil {
-		go globalCallback(ActionShowWindow)
+		go globalCallback(ActionShowWindow, "")
 	}
 }
 
 //export tray_onHide
 func tray_onHide() {
 	if globalCallback != nil {
-		go globalCallback(ActionHideWindow)
+		go globalCallback(ActionHideWindow, "")
 	}
 }
 
 //export tray_onSettings
 func tray_onSettings() {
 	if globalCallback != nil {
-		go globalCallback(ActionSettings)
+		go globalCallback(ActionSettings, "")
+	}
+}
+
+//export tray_onOpenRecent
+func tray_onOpenRecent(path *C.char) {
+	if globalCallback != nil && path != nil {
+		go globalCallback(ActionOpenRecent, C.GoString(path))
+	}
+}
+
+//export tray_onOpenRecentsFolder
+func tray_onOpenRecentsFolder() {
+	if globalCallback != nil {
+		go globalCallback(ActionOpenRecentsFolder, "")
 	}
 }
 
 //export tray_onQuit
 func tray_onQuit() {
 	if globalCallback != nil {
-		go globalCallback(ActionQuit)
+		go globalCallback(ActionQuit, "")
 	}
 }

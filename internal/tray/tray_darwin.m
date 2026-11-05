@@ -8,8 +8,21 @@ extern void tray_onShow(void);
 extern void tray_onHide(void);
 extern void tray_onSettings(void);
 extern void tray_onQuit(void);
+// Must match the signature cgo generates for the Go export (char *, not const).
+extern void tray_onOpenRecent(char *path);
+extern void tray_onOpenRecentsFolder(void);
 
 static NSStatusItem *statusItem = nil;
+
+// Recents submenu state (created once, updated in place)
+static NSMenu *recentsMenu = nil;
+static NSMutableArray<NSMenuItem *> *recentItems = nil;
+// Paths that arrived before the status item/menu existed.
+static NSArray<NSString *> *pendingRecents = nil;
+#define FASP_MAX_RECENTS 10
+
+// Defined below; used by create_status_item to apply a pending list.
+static void update_recents(NSArray<NSString *> *paths);
 
 @interface TrayDelegate : NSObject
 @end
@@ -38,6 +51,18 @@ static NSStatusItem *statusItem = nil;
 
 - (void)onQuit:(id)sender {
     tray_onQuit();
+}
+
+- (void)onOpenRecent:(id)sender {
+    NSMenuItem *item = (NSMenuItem *)sender;
+    NSString *path = item.representedObject;
+    if (path != nil) {
+        tray_onOpenRecent((char *)[path UTF8String]);
+    }
+}
+
+- (void)onOpenRecentsFolder:(id)sender {
+    tray_onOpenRecentsFolder();
 }
 
 @end
@@ -94,6 +119,34 @@ static void create_status_item(void) {
         openImageItem.target = delegate;
         [menu addItem:openImageItem];
 
+        // Recents submenu: Open Folder, separator, then the last saved files.
+        NSMenuItem *recentsItem = [[NSMenuItem alloc] initWithTitle:@"Recents"
+                                                             action:nil
+                                                      keyEquivalent:@""];
+        recentsMenu = [[NSMenu alloc] initWithTitle:@"Recents"];
+
+        NSMenuItem *openFolderItem = [[NSMenuItem alloc] initWithTitle:@"Open Folder"
+                                                                action:@selector(onOpenRecentsFolder:)
+                                                         keyEquivalent:@""];
+        openFolderItem.target = delegate;
+        [recentsMenu addItem:openFolderItem];
+
+        [recentsMenu addItem:[NSMenuItem separatorItem]];
+
+        recentItems = [[NSMutableArray alloc] initWithCapacity:FASP_MAX_RECENTS];
+        for (int i = 0; i < FASP_MAX_RECENTS; i++) {
+            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:@""
+                                                          action:@selector(onOpenRecent:)
+                                                   keyEquivalent:@""];
+            item.target = delegate;
+            item.hidden = YES;
+            [recentsMenu addItem:item];
+            [recentItems addObject:item];
+        }
+
+        recentsItem.submenu = recentsMenu;
+        [menu addItem:recentsItem];
+
         [menu addItem:[NSMenuItem separatorItem]];
 
         NSMenuItem *showItem = [[NSMenuItem alloc] initWithTitle:@"Show Window"
@@ -125,6 +178,12 @@ static void create_status_item(void) {
         [menu addItem:quitItem];
 
         statusItem.menu = menu;
+
+        // Apply a recents list that arrived before the menu existed.
+        if (pendingRecents != nil) {
+            update_recents(pendingRecents);
+            pendingRecents = nil;
+        }
 
         NSLog(@"[Fasp] Tray icon created successfully!");
     }
@@ -237,6 +296,60 @@ void tray_set_icon(const char *icon_path) {
     } else {
         tray_set_icon_internal(iconPathString);
     }
+}
+
+// Update the Recents submenu with the given paths (most recent first).
+static void update_recents(NSArray<NSString *> *paths) {
+    if (recentsMenu == nil || recentItems == nil) {
+        NSLog(@"[Fasp] Cannot set recents: tray not initialized");
+        return;
+    }
+
+    NSUInteger count = [paths count];
+    if (count > [recentItems count]) {
+        count = [recentItems count];
+    }
+
+    for (NSUInteger i = 0; i < [recentItems count]; i++) {
+        NSMenuItem *item = [recentItems objectAtIndex:i];
+
+        if (i >= count) {
+            item.hidden = YES;
+            continue;
+        }
+
+        NSString *path = [paths objectAtIndex:i];
+        item.title = [[path lastPathComponent] stringByDeletingPathExtension];
+        item.toolTip = path;
+        item.representedObject = path;
+        item.hidden = NO;
+    }
+}
+
+void tray_set_recents(char **paths, int count) {
+    // Copy the strings now: the Go caller frees them as soon as this returns.
+    NSMutableArray<NSString *> *list = [[NSMutableArray alloc] initWithCapacity:(NSUInteger)count];
+    for (int i = 0; i < count; i++) {
+        if (paths == NULL || paths[i] == NULL) {
+            continue;
+        }
+        NSString *path = [NSString stringWithUTF8String:paths[i]];
+        if (path != nil) {
+            [list addObject:path];
+        }
+    }
+
+    // The block retains `list` until it runs on the main thread.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (recentsMenu == nil) {
+            // Menu is still being created (tray_init defers 300ms); keep the
+            // list so create_status_item can apply it. We own the only
+            // reference: it is never released.
+            pendingRecents = list;
+            return;
+        }
+        update_recents(list);
+    });
 }
 
 void tray_cleanup(void) {
