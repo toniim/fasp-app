@@ -1,0 +1,14 @@
+# Keep LF in the working tree on every OS. Wails regenerates
+# frontend/wailsjs with LF, so with Git for Windows' default core.autocrlf=true
+# every build would otherwise show those files as modified.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.png binary
+*.ico binary
+*.icns binary
+*.exe binary
