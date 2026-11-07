@@ -51,6 +51,9 @@ func (s *serviceImpl) CopyImage(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to copy to clipboard: decode image: %w", err)
 	}
+	if img.Bounds().Empty() {
+		return errors.New("failed to copy to clipboard: image is empty")
+	}
 	if err := setClipboardDIB(imageToDIB(img)); err != nil {
 		return fmt.Errorf("failed to copy to clipboard: %w", err)
 	}
