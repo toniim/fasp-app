@@ -18,7 +18,7 @@ Fasp is a lightweight, fast desktop screenshot and annotation tool for macOS and
 
 ## Requirements
 
-- **macOS**: 11.0+ (Intel or Apple Silicon)
+- **macOS**: 14.0+ (Intel or Apple Silicon); screenshots use ScreenCaptureKit
 - **Windows**: 10 (build 1909)+
 - **Go**: 1.24+ (for development)
 - **Node.js**: 18+ (for frontend development)

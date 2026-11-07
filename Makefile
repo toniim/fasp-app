@@ -7,6 +7,13 @@ BUILD_TIME := $(shell date -u '+%Y-%m-%d %H:%M:%S')
 MODULE     := github.com/heytonyne/fasp/internal/version
 LDFLAGS    := -X '$(MODULE).Version=$(VERSION)' -X '$(MODULE).BuildTime=$(BUILD_TIME)' -X '$(MODULE).GitCommit=$(GIT_COMMIT)'
 
+# ScreenCaptureKit screenshots need macOS 14. Wails adds its own 10.13 target
+# unless CGO_CFLAGS / CGO_LDFLAGS already carry one.
+ifeq ($(shell uname -s),Darwin)
+export CGO_CFLAGS  += -mmacosx-version-min=14.0
+export CGO_LDFLAGS += -mmacosx-version-min=14.0
+endif
+
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
