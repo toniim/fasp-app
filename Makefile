@@ -1,10 +1,17 @@
-.PHONY: help dev build build-darwin build-darwin-signed sign build-windows test lint mocks clean install run release
+.PHONY: help dev build build-darwin build-darwin-signed sign build-windows test lint mocks clean install run release check-wails
 
 # Single source of truth for the version: internal/version/version.go
 VERSION    := $(shell grep 'Version = ' internal/version/version.go | sed 's/.*"\(.*\)".*/\1/')
 GIT_COMMIT := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 BUILD_TIME := $(shell date -u '+%Y-%m-%d %H:%M:%S')
 MODULE     := github.com/heytonyne/fasp/internal/version
+# The wails CLI must match the library in go.mod: a newer CLI regenerates
+# frontend/wailsjs bindings the project does not track.
+WAILS_VERSION := $(shell go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)
+# That CLI cannot read packages built by newer Go releases ("package runtime
+# without types"), so wails runs on the go.mod toolchain, as in CI.
+GO_VERSION    := $(shell go mod edit -print | sed -n 's/^go //p')
+dev build build-darwin build-darwin-signed build-windows: export GOTOOLCHAIN = go$(GO_VERSION)
 LDFLAGS    := -X '$(MODULE).Version=$(VERSION)' -X '$(MODULE).BuildTime=$(BUILD_TIME)' -X '$(MODULE).GitCommit=$(GIT_COMMIT)'
 
 # ScreenCaptureKit screenshots need macOS 14. Wails adds its own 10.13 target
@@ -24,25 +31,34 @@ install: ## Install dependencies
 	@cd frontend && npm install
 	@echo "Installing development tools..."
 	@go install github.com/vektra/mockery/v2@latest
+	@go install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)
 
-dev: ## Run in development mode with hot reload
+check-wails: ## Fail if the wails CLI version differs from go.mod
+	@cli=$$(wails version 2>/dev/null | head -n 1 | tr -d '[:space:]'); \
+	if [ "$$cli" != "$(WAILS_VERSION)" ]; then \
+		echo "wails CLI is '$$cli' but go.mod pins $(WAILS_VERSION)."; \
+		echo "Run: make install (or go install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION))"; \
+		exit 1; \
+	fi
+
+dev: check-wails ## Run in development mode with hot reload
 	@wails dev
 
-build: ## Build production binary (stamps version from version.go)
+build: check-wails ## Build production binary (stamps version from version.go)
 	@echo "Building $(VERSION) ($(GIT_COMMIT))"
 	@wails build -ldflags "$(LDFLAGS)"
 
-build-darwin: ## Build for macOS
+build-darwin: check-wails ## Build for macOS
 	@wails build -platform darwin/arm64 -ldflags "$(LDFLAGS)"
 
-build-darwin-signed: ## Build for macOS with code signing (preserves screen recording permission)
+build-darwin-signed: check-wails ## Build for macOS with code signing (preserves screen recording permission)
 	@wails build -platform darwin/arm64 -ldflags "$(LDFLAGS)"
 	@./scripts/sign-macos.sh
 
 sign: ## Sign macOS app (run after build to preserve permissions)
 	@./scripts/sign-macos.sh
 
-build-windows: ## Build for Windows (NSIS installer; auto-installs WebView2 if missing)
+build-windows: check-wails ## Build for Windows (NSIS installer; auto-installs WebView2 if missing)
 	@wails build -platform windows/amd64 -nsis -webview2 download -ldflags "$(LDFLAGS)"
 
 test: ## Run all tests
