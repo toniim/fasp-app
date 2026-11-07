@@ -57,9 +57,7 @@ func captureCursorMonitor() ([]byte, int, int, error) {
 	if r, _, e := procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt))); r == 0 {
 		return nil, 0, 0, fmt.Errorf("GetCursorPos: %w", e)
 	}
-	// MonitorFromPoint takes the POINT by value, packed into one register.
-	packed := uintptr(uint32(pt.X)) | uintptr(uint32(pt.Y))<<32
-	monitor, _, _ := procMonitorFromPoint.Call(packed, monitorDefaultToPrimary)
+	monitor := monitorFromPoint(pt)
 	mi := monitorInfo{CbSize: uint32(unsafe.Sizeof(monitorInfo{}))}
 	if r, _, e := procGetMonitorInfoW.Call(monitor, uintptr(unsafe.Pointer(&mi))); r == 0 {
 		return nil, 0, 0, fmt.Errorf("GetMonitorInfoW: %w", e)
@@ -112,6 +110,19 @@ func captureCursorMonitor() ([]byte, int, int, error) {
 		return nil, 0, 0, errors.New("GetDIBits failed")
 	}
 	return pix, width, height, nil
+}
+
+// monitorFromPoint calls MonitorFromPoint, which takes the POINT by value: on
+// 64-bit Windows the 8-byte struct travels packed in one register, on 32-bit
+// it is pushed as two stack slots.
+func monitorFromPoint(pt point) uintptr {
+	if unsafe.Sizeof(uintptr(0)) == 8 {
+		packed := uint64(uint32(pt.X)) | uint64(uint32(pt.Y))<<32
+		m, _, _ := procMonitorFromPoint.Call(uintptr(packed), monitorDefaultToPrimary)
+		return m
+	}
+	m, _, _ := procMonitorFromPoint.Call(uintptr(uint32(pt.X)), uintptr(uint32(pt.Y)), monitorDefaultToPrimary)
+	return m
 }
 
 // CaptureAllDisplays captures all connected displays
