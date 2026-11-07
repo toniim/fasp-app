@@ -3,11 +3,37 @@
 package clipboard
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"image"
+	_ "image/png" // decode PNG input
+	"runtime"
 	"time"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
+)
+
+var (
+	user32   = windows.NewLazySystemDLL("user32.dll")
+	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
+
+	procOpenClipboard    = user32.NewProc("OpenClipboard")
+	procCloseClipboard   = user32.NewProc("CloseClipboard")
+	procEmptyClipboard   = user32.NewProc("EmptyClipboard")
+	procSetClipboardData = user32.NewProc("SetClipboardData")
+
+	procGlobalAlloc   = kernel32.NewProc("GlobalAlloc")
+	procGlobalFree    = kernel32.NewProc("GlobalFree")
+	procGlobalLock    = kernel32.NewProc("GlobalLock")
+	procGlobalUnlock  = kernel32.NewProc("GlobalUnlock")
+	procRtlMoveMemory = kernel32.NewProc("RtlMoveMemory")
+)
+
+const (
+	cfDIB        = 8
+	gmemMoveable = 0x0002
 )
 
 // serviceImpl implements the Service interface for Windows
@@ -18,36 +44,67 @@ func New() Service {
 	return &serviceImpl{}
 }
 
-// CopyImage copies image data to clipboard using PowerShell
+// CopyImage puts the image on the clipboard as CF_DIB, the format
+// System.Windows.Forms.Clipboard.SetImage produces.
 func (s *serviceImpl) CopyImage(data []byte) error {
-	// Create temp file
-	tmpDir := os.TempDir()
-	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("fasp_clipboard_%d.png", time.Now().UnixNano()))
-	defer os.Remove(tmpFile)
-
-	// Write image data to temp file
-	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
-		return fmt.Errorf("failed to write temp file: %w", err)
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("failed to copy to clipboard: decode image: %w", err)
 	}
-
-	// Use PowerShell to copy the image to the clipboard. The file path goes
-	// through the environment rather than the script text, so a temp path with
-	// quotes can't break the command or inject script code.
-	psScript := `
-		Add-Type -AssemblyName System.Windows.Forms
-		Add-Type -AssemblyName System.Drawing
-		$img = [System.Drawing.Image]::FromFile($env:FASP_CLIPBOARD_IN)
-		[System.Windows.Forms.Clipboard]::SetImage($img)
-		$img.Dispose()
-	`
-
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	cmd.Env = append(os.Environ(), "FASP_CLIPBOARD_IN="+tmpFile)
-
-	if err := cmd.Run(); err != nil {
+	if img.Bounds().Empty() {
+		return errors.New("failed to copy to clipboard: image is empty")
+	}
+	if err := setClipboardDIB(imageToDIB(img)); err != nil {
 		return fmt.Errorf("failed to copy to clipboard: %w", err)
 	}
-
 	return nil
 }
 
+func setClipboardDIB(dib []byte) error {
+	// The clipboard is opened per thread: Open, Set and Close must run on the
+	// same OS thread.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	if err := openClipboard(); err != nil {
+		return err
+	}
+	defer procCloseClipboard.Call()
+
+	if r, _, e := procEmptyClipboard.Call(); r == 0 {
+		return fmt.Errorf("EmptyClipboard: %w", e)
+	}
+
+	h, _, e := procGlobalAlloc.Call(gmemMoveable, uintptr(len(dib)))
+	if h == 0 {
+		return fmt.Errorf("GlobalAlloc: %w", e)
+	}
+	ptr, _, e := procGlobalLock.Call(h)
+	if ptr == 0 {
+		procGlobalFree.Call(h)
+		return fmt.Errorf("GlobalLock: %w", e)
+	}
+	procRtlMoveMemory.Call(ptr, uintptr(unsafe.Pointer(&dib[0])), uintptr(len(dib)))
+	procGlobalUnlock.Call(h)
+
+	if r, _, e := procSetClipboardData.Call(cfDIB, h); r == 0 {
+		procGlobalFree.Call(h) // still ours when SetClipboardData fails
+		return fmt.Errorf("SetClipboardData: %w", e)
+	}
+	return nil // the system owns h now
+}
+
+// openClipboard retries briefly: another app (clipboard history, a password
+// manager) may hold the clipboard open for a moment.
+func openClipboard() error {
+	var lastErr error
+	for i := 0; i < 5; i++ {
+		r, _, e := procOpenClipboard.Call(0)
+		if r != 0 {
+			return nil
+		}
+		lastErr = e
+		time.Sleep(20 * time.Millisecond)
+	}
+	return errors.Join(errors.New("OpenClipboard: clipboard is busy"), lastErr)
+}

@@ -15,10 +15,17 @@ jobs:
         include:
           - os: macos-latest
             platform: darwin/universal
+            # ScreenCaptureKit screenshots need macOS 14. Wails only adds its
+            # own 10.13 target when these flags carry none.
+            cgo_flags: -mmacosx-version-min=14.0
           - os: windows-latest
             platform: windows/amd64
+            cgo_flags: ''
 
     runs-on: ${{ matrix.os }}
+    env:
+      CGO_CFLAGS: ${{ matrix.cgo_flags }}
+      CGO_LDFLAGS: ${{ matrix.cgo_flags }}
 
     steps:
       - name: Checkout
@@ -40,7 +47,8 @@ jobs:
       # Pinned to the version in go.mod: newer CLIs regenerate bindings that
       # the project does not track yet.
       - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+        shell: bash
+        run: go install "github.com/wailsapp/wails/v2/cmd/wails@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)"
 
       - name: Add Go bin to PATH
         shell: bash

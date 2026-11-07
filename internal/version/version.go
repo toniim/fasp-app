@@ -8,7 +8,7 @@ import (
 var (
 	// Version follows format: vYY.M.PATCH
 	// Example: v26.1.0 (year 2026, month 1, patch 0)
-	Version = "v26.11.0"
+	Version = "v26.11.1"
 
 	// BuildTime is set during build
 	BuildTime = ""

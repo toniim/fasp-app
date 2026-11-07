@@ -2,12 +2,25 @@
 
 package clipboard
 
+/*
+#cgo CFLAGS: -x objective-c -fobjc-arc
+#cgo LDFLAGS: -framework AppKit
+#import <AppKit/AppKit.h>
+
+static int fasp_copy_png(const void *bytes, int length) {
+    @autoreleasepool {
+        NSData *data = [NSData dataWithBytes:bytes length:(NSUInteger)length];
+        NSPasteboard *pb = [NSPasteboard generalPasteboard];
+        [pb clearContents];
+        return [pb setData:data forType:NSPasteboardTypePNG] ? 1 : 0;
+    }
+}
+*/
+import "C"
+
 import (
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"time"
+	"errors"
+	"unsafe"
 )
 
 // serviceImpl implements the Service interface for macOS
@@ -18,26 +31,13 @@ func New() Service {
 	return &serviceImpl{}
 }
 
-// CopyImage copies image data to clipboard using osascript
+// CopyImage puts PNG image data on the general pasteboard.
 func (s *serviceImpl) CopyImage(data []byte) error {
-	// Create temp file
-	tmpDir := os.TempDir()
-	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("fasp_clipboard_%d.png", time.Now().UnixNano()))
-	defer os.Remove(tmpFile)
-
-	// Write image data to temp file
-	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
-		return fmt.Errorf("failed to write temp file: %w", err)
+	if len(data) == 0 {
+		return errors.New("failed to copy to clipboard: no image data")
 	}
-
-	// Use osascript to copy image to clipboard
-	script := fmt.Sprintf(`set the clipboard to (read (POSIX file "%s") as «class PNGf»)`, tmpFile)
-	cmd := exec.Command("osascript", "-e", script)
-	
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to copy to clipboard: %w", err)
+	if C.fasp_copy_png(unsafe.Pointer(&data[0]), C.int(len(data))) == 0 {
+		return errors.New("failed to copy to clipboard: pasteboard rejected the image")
 	}
-
 	return nil
 }
-

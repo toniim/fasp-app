@@ -5,13 +5,11 @@ package capture
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
-	"image"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"syscall"
+	"image/png"
 	"time"
+	"unsafe"
 
 	"github.com/heytonyne/fasp/internal/model"
 )
@@ -29,62 +27,102 @@ func (s *serviceImpl) CaptureFullscreen() (*model.CaptureResult, error) {
 	return s.CaptureActiveDisplay()
 }
 
-// CaptureActiveDisplay captures the screen the mouse cursor is on
+// CaptureActiveDisplay captures the monitor the mouse cursor is on with GDI,
+// in-process. The app manifest declares per-monitor v2 DPI awareness, so the
+// monitor rectangle is in physical pixels.
 func (s *serviceImpl) CaptureActiveDisplay() (*model.CaptureResult, error) {
-	// Create temp file
-	tmpDir := os.TempDir()
-	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("fasp_capture_%d.png", time.Now().UnixNano()))
-	defer os.Remove(tmpFile)
-
-	// Use PowerShell to capture the screen under the cursor. The destination path is
-	// passed through the environment instead of being interpolated into the
-	// script, so temp paths containing quotes can't break or inject script code.
-	psScript := `
-		Add-Type -AssemblyName System.Windows.Forms
-		Add-Type -AssemblyName System.Drawing
-		$screen = [System.Windows.Forms.Screen]::FromPoint([System.Windows.Forms.Cursor]::Position).Bounds
-		$bitmap = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height
-		$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-		$graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
-		$bitmap.Save($env:FASP_CAPTURE_OUT, [System.Drawing.Imaging.ImageFormat]::Png)
-		$graphics.Dispose()
-		$bitmap.Dispose()
-	`
-
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	cmd.Env = append(os.Environ(), "FASP_CAPTURE_OUT="+tmpFile)
-	// Hide the PowerShell window
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
-	}
-	if err := cmd.Run(); err != nil {
+	pix, width, height, err := captureCursorMonitor()
+	if err != nil {
 		return nil, fmt.Errorf("failed to capture screenshot: %w", err)
 	}
 
-	// Read the captured image
-	data, err := os.ReadFile(tmpFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read screenshot: %w", err)
+	var buf bytes.Buffer
+	enc := png.Encoder{CompressionLevel: png.BestSpeed}
+	if err := enc.Encode(&buf, bgraToRGBA(pix, width, height)); err != nil {
+		return nil, fmt.Errorf("failed to encode screenshot: %w", err)
 	}
-
-	// Decode to get dimensions
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode image: %w", err)
-	}
-
-	bounds := img.Bounds()
-
-	// Convert to base64
-	base64Data := base64.StdEncoding.EncodeToString(data)
 
 	return &model.CaptureResult{
-		Data:      base64Data,
-		Width:     bounds.Dx(),
-		Height:    bounds.Dy(),
+		Data:      base64.StdEncoding.EncodeToString(buf.Bytes()),
+		Width:     width,
+		Height:    height,
 		Timestamp: time.Now(),
 	}, nil
+}
+
+// captureCursorMonitor copies the monitor under the cursor into a top-down
+// 32 bpp BGRA buffer.
+func captureCursorMonitor() ([]byte, int, int, error) {
+	var pt point
+	if r, _, e := procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt))); r == 0 {
+		return nil, 0, 0, fmt.Errorf("GetCursorPos: %w", e)
+	}
+	monitor := monitorFromPoint(pt)
+	mi := monitorInfo{CbSize: uint32(unsafe.Sizeof(monitorInfo{}))}
+	if r, _, e := procGetMonitorInfoW.Call(monitor, uintptr(unsafe.Pointer(&mi))); r == 0 {
+		return nil, 0, 0, fmt.Errorf("GetMonitorInfoW: %w", e)
+	}
+	left, top := mi.RcMonitor.Left, mi.RcMonitor.Top
+	width := int(mi.RcMonitor.Right - left)
+	height := int(mi.RcMonitor.Bottom - top)
+	if width <= 0 || height <= 0 {
+		return nil, 0, 0, errors.New("monitor has an empty area")
+	}
+
+	screenDC, _, _ := procGetDC.Call(0)
+	if screenDC == 0 {
+		return nil, 0, 0, errors.New("GetDC failed")
+	}
+	defer procReleaseDC.Call(0, screenDC)
+
+	memDC, _, _ := procCreateCompatibleDC.Call(screenDC)
+	if memDC == 0 {
+		return nil, 0, 0, errors.New("CreateCompatibleDC failed")
+	}
+	defer procDeleteDC.Call(memDC)
+
+	bitmap, _, _ := procCreateCompatibleBitmap.Call(screenDC, uintptr(width), uintptr(height))
+	if bitmap == 0 {
+		return nil, 0, 0, errors.New("CreateCompatibleBitmap failed")
+	}
+	defer procDeleteObject.Call(bitmap)
+
+	old, _, _ := procSelectObject.Call(memDC, bitmap)
+	if r, _, e := procBitBlt.Call(memDC, 0, 0, uintptr(width), uintptr(height),
+		screenDC, uintptr(left), uintptr(top), srcCopy|captureBlt); r == 0 {
+		procSelectObject.Call(memDC, old)
+		return nil, 0, 0, fmt.Errorf("BitBlt: %w", e)
+	}
+	// GetDIBits needs the bitmap deselected from the DC.
+	procSelectObject.Call(memDC, old)
+
+	bi := bitmapInfo{Header: bitmapInfoHeader{
+		BiSize:        uint32(unsafe.Sizeof(bitmapInfoHeader{})),
+		BiWidth:       int32(width),
+		BiHeight:      -int32(height), // negative: top-down rows
+		BiPlanes:      1,
+		BiBitCount:    32,
+		BiCompression: biRGB,
+	}}
+	pix := make([]byte, width*height*4)
+	if r, _, _ := procGetDIBits.Call(memDC, bitmap, 0, uintptr(height),
+		uintptr(unsafe.Pointer(&pix[0])), uintptr(unsafe.Pointer(&bi)), dibRGBColors); r == 0 {
+		return nil, 0, 0, errors.New("GetDIBits failed")
+	}
+	return pix, width, height, nil
+}
+
+// monitorFromPoint calls MonitorFromPoint, which takes the POINT by value: on
+// 64-bit Windows the 8-byte struct travels packed in one register, on 32-bit
+// it is pushed as two stack slots.
+func monitorFromPoint(pt point) uintptr {
+	if unsafe.Sizeof(uintptr(0)) == 8 {
+		packed := uint64(uint32(pt.X)) | uint64(uint32(pt.Y))<<32
+		m, _, _ := procMonitorFromPoint.Call(uintptr(packed), monitorDefaultToPrimary)
+		return m
+	}
+	m, _, _ := procMonitorFromPoint.Call(uintptr(uint32(pt.X)), uintptr(uint32(pt.Y)), monitorDefaultToPrimary)
+	return m
 }
 
 // CaptureAllDisplays captures all connected displays

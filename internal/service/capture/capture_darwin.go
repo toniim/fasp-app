@@ -3,43 +3,19 @@
 package capture
 
 /*
-#cgo LDFLAGS: -framework CoreGraphics -framework CoreFoundation
-#include <CoreGraphics/CoreGraphics.h>
-
-// cursorDisplayIndex returns the 1-based position of the display under the
-// mouse cursor in the active display list, the same numbering `screencapture -D`
-// uses (1 is the main display). It returns 0 when the display cannot be found.
-static int cursorDisplayIndex(void) {
-    CGEventRef ev = CGEventCreate(NULL);
-    if (ev == NULL) return 0;
-    CGPoint p = CGEventGetLocation(ev);
-    CFRelease(ev);
-
-    CGDirectDisplayID under;
-    uint32_t found = 0;
-    if (CGGetDisplaysWithPoint(p, 1, &under, &found) != kCGErrorSuccess || found == 0) return 0;
-
-    CGDirectDisplayID list[32];
-    uint32_t count = 0;
-    if (CGGetActiveDisplayList(32, list, &count) != kCGErrorSuccess) return 0;
-    for (uint32_t i = 0; i < count; i++) {
-        if (list[i] == under) return (int)i + 1;
-    }
-    return 0;
-}
+#cgo CFLAGS: -fobjc-arc
+#cgo LDFLAGS: -framework ScreenCaptureKit -framework CoreGraphics -framework ImageIO -framework Foundation -framework UniformTypeIdentifiers
+#include <stdlib.h>
+#include "capture_darwin.h"
 */
 import "C"
 
 import (
-	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
-	"image"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
 	"time"
+	"unsafe"
 
 	"github.com/heytonyne/fasp/internal/model"
 )
@@ -58,47 +34,31 @@ func (s *serviceImpl) CaptureFullscreen() (*model.CaptureResult, error) {
 }
 
 // CaptureActiveDisplay captures the display the mouse cursor is on, falling
-// back to the main display when it cannot be determined.
+// back to the main display when it cannot be determined. It uses
+// ScreenCaptureKit in-process (see capture_darwin.m): physical pixel size, no
+// cursor, no temp file.
 func (s *serviceImpl) CaptureActiveDisplay() (*model.CaptureResult, error) {
-	// Create temp file
-	tmpDir := os.TempDir()
-	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("fasp_capture_%d.png", time.Now().UnixNano()))
-	defer os.Remove(tmpFile)
-
-	// Use macOS screencapture command. -x = silent, no shutter sound. The
-	// cursor is intentionally not captured (-C omitted) so it is never baked
-	// into the screenshot. Without -D, screencapture writes only the main
-	// display when given a single output file.
-	args := []string{"-x", "-t", "png"}
-	if idx := int(C.cursorDisplayIndex()); idx > 0 {
-		args = append(args, "-D", strconv.Itoa(idx))
+	var (
+		buf           unsafe.Pointer
+		size          C.int
+		width, height C.int
+		cerr          *C.char
+	)
+	if C.fasp_capture_cursor_display(&buf, &size, &width, &height, &cerr) != 0 {
+		msg := "unknown error"
+		if cerr != nil {
+			msg = C.GoString(cerr)
+			C.free(unsafe.Pointer(cerr))
+		}
+		return nil, fmt.Errorf("failed to capture screenshot: %w", errors.New(msg))
 	}
-	cmd := exec.Command("screencapture", append(args, tmpFile)...)
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("failed to capture screenshot: %w", err)
-	}
-
-	// Read the captured image
-	data, err := os.ReadFile(tmpFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read screenshot: %w", err)
-	}
-
-	// Decode to get dimensions
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode image: %w", err)
-	}
-
-	bounds := img.Bounds()
-
-	// Convert to base64
-	base64Data := base64.StdEncoding.EncodeToString(data)
+	data := C.GoBytes(buf, size)
+	C.free(buf)
 
 	return &model.CaptureResult{
-		Data:      base64Data,
-		Width:     bounds.Dx(),
-		Height:    bounds.Dy(),
+		Data:      base64.StdEncoding.EncodeToString(data),
+		Width:     int(width),
+		Height:    int(height),
 		Timestamp: time.Now(),
 	}, nil
 }
