@@ -29,10 +29,12 @@ jobs:
         with:
           node-version: '20'
 
+      # Pinned to the version in go.mod: newer CLIs regenerate bindings that
+      # the project does not track yet.
       - name: Install Wails
         shell: bash
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+          go install "github.com/wailsapp/wails/v2/cmd/wails@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Install NSIS
