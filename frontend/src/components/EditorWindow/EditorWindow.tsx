@@ -91,16 +91,10 @@ const EditorWindow: React.FC = () => {
       setViewport(view);
       setScaleRatio(scale);
 
-      // Open at real size (1 image px = 1 device px) instead of a downscaled
-      // fit: that is the only rendering that looks exactly like the capture.
-      // "Fit" is one click away when the user wants the overview.
-      const dpr = window.devicePixelRatio || 1;
-      const realZoom = scale > 0 ? 1 / (scale * dpr) : 1;
-      setZoom(realZoom);
-      setStagePos(clampPosition({ x: 0, y: 0 }, {
-        width: size.width * realZoom,
-        height: size.height * realZoom,
-      }, view));
+      // Open every new image fitted to the window so the whole capture is
+      // visible; "Real Size" in the zoom bar shows it pixel-exact.
+      setZoom(1);
+      setStagePos(clampPosition({ x: 0, y: 0 }, size, view));
     };
   }, [image]);
 
@@ -163,14 +157,10 @@ const EditorWindow: React.FC = () => {
       setPreviousScaleRatio(scaleRatio);
       setScaleRatio(newScale);
 
-      // Keep real-size rendering after a resize; re-clamp the position.
-      const dpr = window.devicePixelRatio || 1;
-      const realZoom = newScale > 0 ? 1 / (newScale * dpr) : 1;
-      setZoom(realZoom);
-      setStagePos(clampPosition({ x: 0, y: 0 }, {
-        width: size.width * realZoom,
-        height: size.height * realZoom,
-      }, view));
+      // Refit after a resize. The editor window is shown and resized right
+      // after a capture, so anything else would undo the fit on open.
+      setZoom(1);
+      setStagePos(clampPosition({ x: 0, y: 0 }, size, view));
     };
 
     window.addEventListener('resize', handleResize);
