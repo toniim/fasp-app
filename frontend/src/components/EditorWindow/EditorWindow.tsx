@@ -1176,8 +1176,10 @@ const EditorWindow: React.FC = () => {
           />
         );
       case 'blur':
-        // Use textured pattern to redact/hide sensitive information
-        // Diagonal stripes pattern - softer look than solid black
+        // Redacts sensitive information with a textured pattern (softer look
+        // than solid black). It must stay fully opaque: any transparency lets
+        // the text underneath show through, and a contrast boost on the
+        // exported image makes it readable again.
         return (
           <Rect
             key={`${ann.id}-${blurPatternImage ? 'pattern' : 'solid'}`}
@@ -1194,7 +1196,7 @@ const EditorWindow: React.FC = () => {
             fillPatternImage={blurPatternImage || undefined}
             fillPatternRepeat="repeat"
             fill={blurPatternImage ? undefined : '#000000'}
-            opacity={0.95}
+            opacity={1}
             stroke={isSelected ? '#007bff' : undefined}
             strokeWidth={isSelected ? 2 : 0}
             draggable={isDraggable}
