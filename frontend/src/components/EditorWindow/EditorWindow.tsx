@@ -165,10 +165,19 @@ const EditorWindow: React.FC = () => {
 
     window.addEventListener('resize', handleResize);
 
+    // The listener only exists once the image has loaded. On Windows the
+    // editor is shown and maximised before a fresh capture finishes decoding,
+    // so that resize can fire first and be missed, leaving the editor sized
+    // to the pre-maximise window. Catch up if the window changed meanwhile.
+    const current = viewportSize();
+    if (current.width !== viewport.width || current.height !== viewport.height) {
+      handleResize();
+    }
+
     return () => {
       window.removeEventListener('resize', handleResize);
     };
-  }, [konvaImage, scaleRatio, annotations, updateAnnotation]);
+  }, [konvaImage, scaleRatio, annotations, updateAnnotation, viewport]);
 
   // Put the stage canvas on the device pixel grid; together with the
   // device-aligned viewport size this keeps the canvas unscaled on screen.
