@@ -548,11 +548,13 @@ func (a *App) ShowWindow() {
 	runtime.WindowShow(a.ctx)
 	runtime.WindowUnminimise(a.ctx)
 	a.applyWindowState()
+	focusWebView()
 	// Re-apply shortly after: on Windows, maximising right after Show can be
 	// ignored because the window hasn't finished becoming visible yet.
 	go func() {
 		time.Sleep(120 * time.Millisecond)
 		a.applyWindowState()
+		focusWebView()
 	}()
 }
 
