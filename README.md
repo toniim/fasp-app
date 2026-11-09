@@ -30,8 +30,23 @@ Requires Windows 10 (1909) or later.
 
 ### macOS
 
-Releases do not include a macOS build yet; build it from source (see [Development](#development)) with `make build-darwin-signed`.
-Requires macOS 14 or later. On first capture, allow Fasp under **System Settings → Privacy & Security → Screen Recording**.
+Requires macOS 14 (Sonoma) or later, on Apple Silicon or Intel.
+
+1. Download **`fasp-macos-universal.zip`** from the [latest release](https://github.com/toniim/fasp-app/releases/latest) and unzip it (Safari does this for you).
+2. Drag **`fasp.app`** into your **Applications** folder.
+3. **Allow it to open (once).** Fasp is open source and not signed with a paid Apple Developer ID, so macOS blocks the first launch with *"Apple could not verify 'fasp' is free of malware"*. Either:
+   - double-click `fasp.app`, click **Done**, then open **System Settings → Privacy & Security**, scroll down to *"fasp" was blocked…* and click **Open Anyway** (confirm with your password); or
+   - run this once in Terminal:
+     ```bash
+     xattr -dr com.apple.quarantine /Applications/fasp.app
+     ```
+     This is also the fix if macOS says the app *"is damaged and can't be opened"*.
+4. **Allow screen recording.** On the first capture macOS asks for permission: turn **fasp** on under **System Settings → Privacy & Security → Screen & System Audio Recording** (*Screen Recording* on macOS 14), then quit Fasp from the menu bar icon and open it again.
+5. Fasp lives in the menu bar. Press **Cmd+Shift+5** to capture.
+
+**After updating**, repeat steps 3 and 4: because the app is not signed with a Developer ID, macOS treats each version as a new app and drops the old Screen Recording permission. If the toggle is already on but captures fail, remove **fasp** from that list with **−** (or run `tccutil reset ScreenCapture com.wails.fasp`) and grant it again.
+
+You can also build it yourself; see [Development](#development).
 
 ## Usage
 
@@ -108,7 +123,9 @@ Settings are stored in `%APPDATA%\fasp\settings.json` on Windows and `~/Library/
 ## Troubleshooting
 
 - **A hotkey does nothing (Windows).** Another app may own it. Windows 11 can reserve `PrintScreen` for the Snipping Tool: turn off **Settings → Accessibility → Keyboard → Use the Print screen key to open screen capture**, or pick another hotkey in Fasp.
-- **Captures are black or only show the wallpaper (macOS).** Grant **Screen Recording** permission and restart Fasp. Unsigned rebuilds lose the permission; build with `make build-darwin-signed` to keep it.
+- **macOS won't open the app, or says it is damaged.** See step 3 of [Install → macOS](#macos): **Open Anyway** in Privacy & Security, or `xattr -dr com.apple.quarantine /Applications/fasp.app`.
+- **Captures are black or only show the wallpaper (macOS).** Grant **Screen Recording** permission and restart Fasp. After an update, remove fasp from the Screen Recording list and grant it again. For your own builds, `make build-darwin-signed` with a local certificate (`scripts/create-dev-certificate.sh`) keeps the permission across rebuilds.
+- **Cmd+Shift+5 opens the macOS screenshot toolbar instead (macOS).** Pick another hotkey in Fasp Settings, or turn off that shortcut under **System Settings → Keyboard → Keyboard Shortcuts → Screenshots**.
 - **SmartScreen blocks the installer.** The installer is not code-signed yet: **More info → Run anyway**.
 
 ## Development
@@ -134,7 +151,9 @@ Without `make`, run the same `wails build` command with `GOTOOLCHAIN` set to tha
 
 1. Bump `Version` in `internal/version/version.go` (format `vYY.M.PATCH`) and merge it to `main`.
 2. Run `make release` (or `scripts/release.sh`): it tags the commit and pushes the tag.
-3. The Release workflow builds the Windows app and installer and publishes them as a GitHub release.
+3. The Release workflow builds the Windows app and installer and the macOS app (universal, ad-hoc signed and zipped by `scripts/package-macos.sh`, then launched by `scripts/smoke-macos.sh`), and publishes them together as a GitHub release.
+
+Every pull request also builds, packages and smoke-tests the macOS app; the zip is attached to the CI run as the `fasp-macos-universal` artifact for 7 days. To build release files without publishing, run the Release workflow by hand from the Actions tab.
 
 ### Project layout
 

@@ -67,3 +67,21 @@ jobs:
 
       - name: Build
         run: wails build -platform ${{ matrix.platform }}
+
+      # Same packaging as the release, so a broken macOS download shows up on
+      # the pull request rather than after tagging.
+      - name: Sign ad-hoc and package (macOS)
+        if: runner.os == 'macOS'
+        run: ./scripts/package-macos.sh build/bin/fasp-macos-universal.zip
+
+      - name: Smoke test (macOS)
+        if: runner.os == 'macOS'
+        run: ./scripts/smoke-macos.sh build/bin/fasp-macos-universal.zip
+
+      - name: Upload macOS build
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fasp-macos-universal
+          path: build/bin/fasp-macos-universal.zip
+          retention-days: 7
