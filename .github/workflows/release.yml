@@ -2,12 +2,17 @@ name: Release
 
 # Cut a release by pushing a tag that matches the version in version.go, e.g.
 #   ./scripts/release.sh
-# This builds the Windows app and publishes a GitHub Release with the binaries.
+# This builds the Windows app and installer and the macOS app, then publishes
+# them together as one GitHub Release.
+#
+# Running it by hand (Actions > Release > Run workflow) builds everything and
+# keeps the files as workflow artifacts without publishing a release.
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -46,7 +51,10 @@ jobs:
       - name: Build Windows app
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION=$(./scripts/stamp-version.sh)
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match version.go ($VERSION)"; exit 1
+          fi
           BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
           GIT_COMMIT=$(git rev-parse HEAD)
           echo "Building $VERSION ($GIT_COMMIT)"
@@ -82,14 +90,92 @@ jobs:
           signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
           github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
           wait-for-completion: true
-          # Overwrite the unsigned binaries with the signed ones so the publish
-          # step below uploads the signed versions.
+          # Overwrite the unsigned binaries with the signed ones so the
+          # artifact below carries the signed versions.
           output-artifact-directory: build/bin
+
+      - name: Keep Windows files for publishing
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            build/bin/fasp.exe
+            build/bin/fasp-amd64-installer.exe
+          if-no-files-found: error
+
+  release-macos:
+    runs-on: macos-latest
+    env:
+      # ScreenCaptureKit screenshots need macOS 14. Wails only adds its own
+      # 10.13 target when these flags carry none.
+      CGO_CFLAGS: -mmacosx-version-min=14.0
+      CGO_LDFLAGS: -mmacosx-version-min=14.0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wails
+        run: |
+          go install "github.com/wailsapp/wails/v2/cmd/wails@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Build macOS app (Intel + Apple Silicon)
+        run: |
+          VERSION=$(./scripts/stamp-version.sh)
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match version.go ($VERSION)"; exit 1
+          fi
+          BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
+          GIT_COMMIT=$(git rev-parse HEAD)
+          echo "Building $VERSION ($GIT_COMMIT)"
+          wails build -platform darwin/universal -ldflags "\
+            -X 'github.com/heytonyne/fasp/internal/version.Version=${VERSION}' \
+            -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
+            -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}'"
+
+      # Ad-hoc signed and not notarized: there is no Apple Developer ID yet.
+      # Users clear Gatekeeper once; see README, "Install > macOS".
+      - name: Sign ad-hoc and package
+        run: ./scripts/package-macos.sh build/bin/fasp-macos-universal.zip
+
+      - name: Smoke test (app stays up)
+        run: ./scripts/smoke-macos.sh
+
+      - name: Keep macOS files for publishing
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: build/bin/fasp-macos-universal.zip
+          if-no-files-found: error
+
+  publish:
+    needs: [release-windows, release-macos]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect release files
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
-            build/bin/fasp.exe
-            build/bin/*-installer.exe
+            dist/fasp.exe
+            dist/fasp-amd64-installer.exe
+            dist/fasp-macos-universal.zip
