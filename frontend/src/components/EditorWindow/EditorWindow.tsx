@@ -6,7 +6,7 @@ import Toolbar from './Toolbar';
 import ActionBar from './ActionBar';
 import ZoomBar from './ZoomBar';
 import { GetVersion } from '../../../wailsjs/go/main/App';
-import { fitScale, scaleAnnotation, viewportSize, clampPosition, alignToDevicePixels } from '../../utils/editor-geometry';
+import { fitScale, scaleAnnotation, viewportSize, clampPosition, canPan, alignToDevicePixels } from '../../utils/editor-geometry';
 import './EditorWindow.css';
 
 const EditorWindow: React.FC = () => {
@@ -43,8 +43,22 @@ const EditorWindow: React.FC = () => {
   const [zoom, setZoom] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  // Where the pointer and stage were when the pan started. The pan follows the
+  // total pointer offset from here; summing per-event movementX/Y drifts
+  // because each event's movement is rounded to whole CSS pixels.
+  const panStartRef = useRef<{ pointer: { x: number; y: number }; pos: { x: number; y: number } } | null>(null);
   const [isModifierPressed, setIsModifierPressed] = useState(false);
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
+  // Panning only makes sense when the zoomed image is larger than the editor.
+  const panAvailable = canPan(
+    { width: stageSize.width * zoom, height: stageSize.height * zoom },
+    viewport,
+  );
+  // Shift turns any tool into a temporary hand tool.
+  const shiftPanning = isShiftPressed && panAvailable;
+  // The grab cursor shows whenever a mouse-down would start a pan.
+  const panCursor = (isModifierPressed || isShiftPressed) && panAvailable;
   const [currentAnnotation, setCurrentAnnotation] = useState<Annotation | null>(null);
   const [textInput, setTextInput] = useState<{ x: number; y: number; fontSize?: number; annotationId?: string } | null>(null);
   const [textValue, setTextValue] = useState('');
@@ -307,20 +321,30 @@ const EditorWindow: React.FC = () => {
 
 
 
-  // Track Cmd/Ctrl key for panning on any tool
+  // Track the pan modifiers: Cmd/Ctrl pans from the background, Shift is a
+  // temporary hand tool that pans from anywhere with any tool.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) {
         setIsModifierPressed(true);
+      }
+      if (e.shiftKey) {
+        setIsShiftPressed(true);
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (!e.metaKey && !e.ctrlKey) {
         setIsModifierPressed(false);
       }
+      if (!e.shiftKey) {
+        setIsShiftPressed(false);
+      }
     };
     // Also reset when window loses focus
-    const handleBlur = () => setIsModifierPressed(false);
+    const handleBlur = () => {
+      setIsModifierPressed(false);
+      setIsShiftPressed(false);
+    };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -338,8 +362,8 @@ const EditorWindow: React.FC = () => {
     if (stageRef.current) {
       const container = stageRef.current.container();
 
-      if (isModifierPressed && zoom > 1) {
-        // Only show grab cursor when Ctrl/Cmd is held AND zoomed in
+      if (panCursor) {
+        // Grab cursor only while a pan modifier is held and there is room to pan
         container.style.cursor = 'grab';
       } else if (selectedTool === 'crop') {
         container.style.cursor = 'crosshair';
@@ -347,7 +371,7 @@ const EditorWindow: React.FC = () => {
         container.style.cursor = 'default';
       }
     }
-  }, [zoom, selectedTool, isModifierPressed]);
+  }, [panCursor, selectedTool]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -514,6 +538,14 @@ const EditorWindow: React.FC = () => {
     };
   };
 
+  const startPan = (stage: any) => {
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+    panStartRef.current = { pointer: { x: pointer.x, y: pointer.y }, pos: { ...stagePos } };
+    setIsPanning(true);
+    stage.container().style.cursor = 'grabbing';
+  };
+
   const handleMouseDown = (e: any) => {
     const stage = e.target.getStage();
     const clickedOnStage = e.target === stage;
@@ -530,7 +562,13 @@ const EditorWindow: React.FC = () => {
       ancestor = ancestor.getParent && ancestor.getParent();
     }
 
-    // For crop tool, start drawing crop region (priority over panning)
+    // Shift = temporary hand tool: pan from anywhere, before any tool acts
+    if (shiftPanning) {
+      startPan(stage);
+      return;
+    }
+
+    // For crop tool, start drawing crop region (priority over Cmd/Ctrl panning)
     if (selectedTool === 'crop') {
       const pos = getAdjustedPointerPosition(stage);
       setIsDrawing(true);
@@ -543,10 +581,9 @@ const EditorWindow: React.FC = () => {
       return;
     }
 
-    // Enable panning ONLY when Cmd/Ctrl is held AND zoomed in
-    if (isModifierPressed && zoom > 1 && clickedOnBackground) {
-      setIsPanning(true);
-      stage.container().style.cursor = 'grabbing';
+    // Cmd/Ctrl + drag on the background pans when the image overflows the editor
+    if (isModifierPressed && panAvailable && clickedOnBackground) {
+      startPan(stage);
       return;
     }
 
@@ -712,13 +749,16 @@ const EditorWindow: React.FC = () => {
 
     // Handle panning
     if (isPanning) {
+      const start = panStartRef.current;
+      const pointer = stage.getPointerPosition();
+      if (!start || !pointer) return;
       const content = {
         width: stageSize.width * zoom,
         height: stageSize.height * zoom,
       };
       setStagePos(clampPosition({
-        x: stagePos.x + e.evt.movementX,
-        y: stagePos.y + e.evt.movementY,
+        x: start.pos.x + pointer.x - start.pointer.x,
+        y: start.pos.y + pointer.y - start.pointer.y,
       }, content, viewport));
       return;
     }
@@ -768,10 +808,11 @@ const EditorWindow: React.FC = () => {
     // Handle panning end
     if (isPanning) {
       setIsPanning(false);
+      panStartRef.current = null;
       if (stageRef.current) {
         const container = stageRef.current.container();
         // Restore cursor based on modifier/tool/zoom
-        if (isModifierPressed && zoom > 1) {
+        if (panCursor) {
           container.style.cursor = 'grab';
         } else if (selectedTool === 'crop') {
           container.style.cursor = 'crosshair';
@@ -1114,7 +1155,8 @@ const EditorWindow: React.FC = () => {
   const handleAnnotationMouseEnter = (annId: string) => {
     setHoveredAnnotationId(annId);
     const stage = stageRef.current;
-    if (stage && (selectedTool === 'select' || annId === selectedAnnotationId)) {
+    // While Shift-panning the cursor stays a hand: dragging moves the view.
+    if (stage && !shiftPanning && (selectedTool === 'select' || annId === selectedAnnotationId)) {
       stage.container().style.cursor = 'move';
     }
   };
@@ -1125,13 +1167,18 @@ const EditorWindow: React.FC = () => {
     if (stage && !isPanning) {
       // Restore the editor's base cursor (the cursor effect re-applies grab/
       // crosshair states on the next tool/zoom/modifier change).
-      stage.container().style.cursor = selectedTool === 'crop' ? 'crosshair' : 'default';
+      stage.container().style.cursor = panCursor ? 'grab' : selectedTool === 'crop' ? 'crosshair' : 'default';
     }
   };
 
   const renderAnnotation = (ann: Annotation) => {
     const isSelected = ann.id === selectedAnnotationId || marqueeSelectedIds.includes(ann.id);
-    const isDraggable = selectedTool === 'select' || isSelected;
+    // Shift-panning must move the view, not the annotation under the cursor,
+    // and must not select it either (Konva still fires click on mouse-up).
+    const isDraggable = !shiftPanning && (selectedTool === 'select' || isSelected);
+    const selectOnClick = () => {
+      if (!shiftPanning) setSelectedAnnotation(ann.id);
+    };
 
     switch (ann.type) {
       case 'rectangle':
@@ -1153,7 +1200,7 @@ const EditorWindow: React.FC = () => {
             fill={ann.fill || 'transparent'}
             hitStrokeWidth={Math.max(ann.strokeWidth || 2, 16)}
             draggable={isDraggable}
-            onClick={() => setSelectedAnnotation(ann.id)}
+            onClick={selectOnClick}
             onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
             onMouseLeave={handleAnnotationMouseLeave}
             onDragEnd={(e) => handleDragEnd(e, ann.id)}
@@ -1177,7 +1224,7 @@ const EditorWindow: React.FC = () => {
             stroke={isSelected ? '#007bff' : undefined}
             strokeWidth={isSelected ? 2 : 0}
             draggable={isDraggable}
-            onClick={() => setSelectedAnnotation(ann.id)}
+            onClick={selectOnClick}
             onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
             onMouseLeave={handleAnnotationMouseLeave}
             onDragEnd={(e) => handleDragEnd(e, ann.id)}
@@ -1209,7 +1256,7 @@ const EditorWindow: React.FC = () => {
             stroke={isSelected ? '#007bff' : undefined}
             strokeWidth={isSelected ? 2 : 0}
             draggable={isDraggable}
-            onClick={() => setSelectedAnnotation(ann.id)}
+            onClick={selectOnClick}
             onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
             onMouseLeave={handleAnnotationMouseLeave}
             onDragEnd={(e) => handleDragEnd(e, ann.id)}
@@ -1246,7 +1293,7 @@ const EditorWindow: React.FC = () => {
               pointerWidth={10}
               hitStrokeWidth={20}
               draggable={isDraggable}
-              onClick={() => setSelectedAnnotation(ann.id)}
+              onClick={selectOnClick}
               onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
               onMouseLeave={handleAnnotationMouseLeave}
               onDragEnd={(e) => handleDragEnd(e, ann.id)}
@@ -1278,7 +1325,7 @@ const EditorWindow: React.FC = () => {
                 if (node) shapeRefs.current[ann.id] = node;
               }}
               draggable={isDraggable}
-              onClick={() => setSelectedAnnotation(ann.id)}
+              onClick={selectOnClick}
               onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
               onMouseLeave={handleAnnotationMouseLeave}
               onDragEnd={(e) => handleDragEnd(e, ann.id)}
@@ -1349,7 +1396,7 @@ const EditorWindow: React.FC = () => {
               if (node) shapeRefs.current[ann.id] = node;
             }}
             draggable={isDraggable}
-            onClick={() => setSelectedAnnotation(ann.id)}
+            onClick={selectOnClick}
             onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
             onMouseLeave={handleAnnotationMouseLeave}
             onDblClick={() => {
@@ -1403,7 +1450,7 @@ const EditorWindow: React.FC = () => {
               if (node) shapeRefs.current[ann.id] = node;
             }}
             draggable={isDraggable}
-            onClick={() => setSelectedAnnotation(ann.id)}
+            onClick={selectOnClick}
             onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
             onMouseLeave={handleAnnotationMouseLeave}
             onDragEnd={(e) => handleDragEnd(e, ann.id)}
@@ -1477,7 +1524,7 @@ const EditorWindow: React.FC = () => {
                 rotation={ann.rotation || 0}
                 fill={isSelected ? '#007bff' : ann.fill}
                 draggable={isDraggable}
-                onClick={() => setSelectedAnnotation(ann.id)}
+                onClick={selectOnClick}
                 onDblClick={() => {
                   setSelectedAnnotation(ann.id);
                   setEditingTextId(ann.id);

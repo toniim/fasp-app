@@ -70,6 +70,13 @@ export function alignToDevicePixels(el: HTMLElement): void {
   el.style.top = `${offset(rect.top)}px`;
 }
 
+// canPan reports whether the zoomed content overflows the viewport on either
+// axis, i.e. whether there is anything to pan to (clampPosition centers the
+// content otherwise).
+export function canPan(content: Size, viewport: Size): boolean {
+  return content.width > viewport.width || content.height > viewport.height;
+}
+
 // clampPosition keeps the content reachable inside the viewport: centered when
 // it is smaller than the viewport, otherwise constrained so its edges cannot be
 // panned past the viewport edges. The result is snapped to device pixels.
