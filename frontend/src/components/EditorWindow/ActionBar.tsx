@@ -250,6 +250,9 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, frame }) => {
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // A dialog (Settings, Record) is open: Cmd+C/S belong to its fields.
+      if (document.querySelector('.settings-window')) return;
+
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
 

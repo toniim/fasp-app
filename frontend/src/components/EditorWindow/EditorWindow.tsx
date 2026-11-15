@@ -527,6 +527,8 @@ const EditorWindow: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if typing in a text input / inline text box
       if (textInput || editingTextId) return;
+      // A dialog (Settings, Record) is open: its fields get the keys.
+      if (document.querySelector('.settings-window')) return;
 
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;

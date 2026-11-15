@@ -250,6 +250,13 @@ func (a *App) buildMenu() *menu.Menu {
 		a.quitApp()
 	})
 
+	// On macOS, Cmd+C/V/X/A/Z reach a text field only through the Edit menu's
+	// actions; without it, fields such as the Settings URL and token cannot be
+	// pasted into.
+	if goruntime.GOOS == "darwin" {
+		appMenu.Append(menu.EditMenu())
+	}
+
 	// Window menu
 	windowMenu := appMenu.AddSubmenu("Window")
 	windowMenu.AddText("Show Window", nil, func(_ *menu.CallbackData) {
