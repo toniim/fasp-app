@@ -60,6 +60,7 @@ type App struct {
 	quitting          bool
 
 	recording recordingState
+	media     *mediaServer
 	// recordingBar is set while the window is the small recording control
 	// bar, so its size is not saved as the editor size.
 	recordingBar atomic.Bool
@@ -67,7 +68,7 @@ type App struct {
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{media: newMediaServer()}
 }
 
 // startup is called when the app starts. The context is saved
@@ -129,6 +130,10 @@ func (a *App) setupTray() {
 			runtime.EventsEmit(a.ctx, "open:settings")
 
 		case tray.ActionOpenRecent:
+			if isVideo(arg) {
+				a.openVideo(arg) // play it in the editor, like screenshots
+				break
+			}
 			if err := shell.Open(arg); err != nil {
 				println("[error] open recent:", err.Error())
 			}
@@ -635,6 +640,9 @@ func main() {
 		HideWindowOnClose: goruntime.GOOS == "darwin",
 		AssetServer: &assetserver.Options{
 			Assets: assets,
+			// Requests the embedded assets cannot answer (/media/...) play
+			// local videos in the editor.
+			Handler: app.media,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,

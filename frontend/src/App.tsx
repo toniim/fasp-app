@@ -9,6 +9,7 @@ import Toast from './components/Toast/Toast';
 import RecordDialog from './components/Recording/RecordDialog';
 import RecordingBar from './components/Recording/RecordingBar';
 import RecordingDone, { RecordingResult } from './components/Recording/RecordingDone';
+import VideoViewer, { VideoInfo } from './components/VideoViewer/VideoViewer';
 import { EventsOn, WindowHide } from '../wailsjs/runtime/runtime';
 
 interface ToastState {
@@ -59,6 +60,8 @@ function App() {
   const [showRecordDialog, setShowRecordDialog] = useState(false);
   const [recording, setRecording] = useState<{ mode: string; started_at: number } | null>(null);
   const [recordingDone, setRecordingDone] = useState<RecordingResult | null>(null);
+  // A video shown in the in-app player; it takes the editor's place.
+  const [video, setVideo] = useState<VideoInfo | null>(null);
   // Event handlers are registered once, so they read the recording state
   // through a ref. While recording, the window is the control bar: captures
   // would hide it and bring it back at editor size.
@@ -105,7 +108,17 @@ function App() {
 
     const unsubscribeRecFinished = EventsOn('recording:finished', (result: RecordingResult) => {
       setRecording(null);
-      setRecordingDone(result);
+      if (result.url) {
+        // Play it right away in the editor, like a fresh screenshot.
+        setVideo({ path: result.path, url: result.url, size_bytes: result.size_bytes, warnings: result.warnings });
+      } else {
+        setRecordingDone(result); // nothing was saved: explain why
+      }
+    });
+
+    const unsubscribeOpenVideo = EventsOn('open:video', (v: VideoInfo) => {
+      setRecordingDone(null);
+      setVideo(v);
     });
 
     // A reload during a recording (e.g. dev hot reload) must keep the bar.
@@ -118,6 +131,7 @@ function App() {
       if (unsubscribeOpenRecord) unsubscribeOpenRecord();
       if (unsubscribeRecStarted) unsubscribeRecStarted();
       if (unsubscribeRecFinished) unsubscribeRecFinished();
+      if (unsubscribeOpenVideo) unsubscribeOpenVideo();
       if (unsubscribeCapture) unsubscribeCapture();
       if (unsubscribeRegion) unsubscribeRegion();
       if (unsubscribeSettings) unsubscribeSettings();
@@ -140,6 +154,7 @@ function App() {
       // Show window with the captured image
       ShowWindow();
 
+      setVideo(null);
       setImage(result.data);
     } catch (error) {
       console.error('Failed to capture screenshot:', error);
@@ -169,6 +184,7 @@ function App() {
         return;
       }
       ShowWindow();
+      setVideo(null);
       setImage(result.data, 'select');
     } catch (error) {
       console.error('Failed to capture zone:', error);
@@ -196,6 +212,7 @@ function App() {
       ShowWindow();
 
       // Set image in editor
+      setVideo(null);
       setImage(imageData);
     } catch (error) {
       console.error('Failed to open image:', error);
@@ -211,7 +228,9 @@ function App() {
     <div id="App">
       <PermissionWarning />
 
-      {image ? (
+      {video ? (
+        <VideoViewer video={video} onClose={() => setVideo(null)} />
+      ) : image ? (
         <EditorWindow />
       ) : (
         <div className="welcome-screen">

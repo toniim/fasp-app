@@ -50,6 +50,11 @@ WASAPI mic ──────┘   (AUTOCONVERTPCM)        fill silence, snap dr
 - **Device changes.** Plugging in headphones or unplugging the microphone ends the stream with `AUDCLNT_E_DEVICE_INVALIDATED`. The capture reopens the device; the gap is silent and the result panel shows a warning.
 - **The window closes.** The recording stops by itself and keeps the file up to that moment.
 - **The recording bar.** It is the Wails window, shrunk to an always-on-top bar. `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` keeps it out of the video while it stays on screen.
+- **Playing the result.** The recording opens in the editor's own player, as screenshots open in the editor, not in an external app:
+  - **Serving the file**: the Wails asset server's `Handler` serves registered files only, under an unguessable `/media/<token>/<name>` URL. `http.ServeContent` answers Range requests, so seeking works without loading the whole file.
+  - **Copy**: puts the file itself on the clipboard (`CF_HDROP` on Windows, a file URL on macOS).
+  - **Save As**: copies the file to a location the user picks.
+  - **Upload**: reuses the image upload flow with `video/mp4`.
 
 ### Capture Zone (Windows)
 
@@ -106,8 +111,13 @@ Run against the real app: WebView2 driven over the DevTools protocol, with real 
 | Full screen + computer sound, stopped with the hotkey | 2560×1440 H.264 + AAC 48 kHz stereo; **the bar is absent from the video** |
 | Region via the overlay, stopped with the bar's Stop button | 800×450 file; the window returns to its saved state, not top-most, affinity reset |
 | Settings | three hotkey rows, recording defaults, real microphone list; saving re-registers hotkeys; a duplicate hotkey is refused |
+| Player after stop | opens and plays at once (2560×1440, 4.1 s); seeking to 2.5 s works (Range); Space toggles playback; Esc closes; a new zone capture replaces it with the editor |
+| Copy / Save As | the button and `Ctrl+C` put the file on the clipboard (read back as a file drop list); Save As through the native dialog writes an identical file, and cancelling does nothing |
 
-Not covered on this machine: HiDPI scaling (the display is 100%), multiple monitors, and Windows 10 (its yellow capture border).
+Not covered on this machine:
+- HiDPI scaling (the display is 100%), multiple monitors, and Windows 10 (its yellow capture border);
+- uploading a video to a real fasp server (the server may not accept `video/mp4`);
+- opening a recording from the tray **Recents**, which takes the same `open:video` path as a finished recording.
 
 ## Known limits and follow-ups
 

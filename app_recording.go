@@ -35,6 +35,7 @@ type RecordingStatus struct {
 // RecordingResult describes a finished recording ("recording:finished").
 type RecordingResult struct {
 	Path      string   `json:"path"`
+	URL       string   `json:"url"` // for the in-app player
 	Seconds   float64  `json:"seconds"`
 	Width     int      `json:"width"`
 	Height    int      `json:"height"`
@@ -156,8 +157,8 @@ func (a *App) finishRecording(rec recorder.Recording) {
 		if err != nil {
 			res.Error = err.Error()
 		}
-		if info, statErr := os.Stat(path); statErr == nil {
-			res.SizeBytes = info.Size()
+		if v, vErr := a.videoInfo(path, res.Warnings); vErr == nil && v.SizeBytes > 0 {
+			res.SizeBytes, res.URL = v.SizeBytes, v.URL
 			a.recordRecent(path)
 		}
 		setExcludedFromCapture(false)

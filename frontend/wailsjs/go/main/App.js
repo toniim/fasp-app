@@ -22,6 +22,10 @@ export function CheckScreenRecordingPermission() {
   return window['go']['main']['App']['CheckScreenRecordingPermission']();
 }
 
+export function CopyFileToClipboard(arg1) {
+  return window['go']['main']['App']['CopyFileToClipboard'](arg1);
+}
+
 export function CopyImageToClipboard(arg1) {
   return window['go']['main']['App']['CopyImageToClipboard'](arg1);
 }
@@ -104,6 +108,10 @@ export function RevealPath(arg1) {
 
 export function SaveImage(arg1, arg2) {
   return window['go']['main']['App']['SaveImage'](arg1, arg2);
+}
+
+export function SaveVideoAs(arg1) {
+  return window['go']['main']['App']['SaveVideoAs'](arg1);
 }
 
 export function SelectRecordingRegion() {

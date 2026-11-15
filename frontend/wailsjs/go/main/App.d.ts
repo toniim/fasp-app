@@ -16,6 +16,8 @@ export function CheckAccessibilityPermission():Promise<boolean>;
 
 export function CheckScreenRecordingPermission():Promise<boolean>;
 
+export function CopyFileToClipboard(arg1:string):Promise<void>;
+
 export function CopyImageToClipboard(arg1:Array<number>):Promise<void>;
 
 export function GenerateFilename(arg1:string):Promise<string>;
@@ -57,6 +59,8 @@ export function ResumeHotkeys():Promise<void>;
 export function RevealPath(arg1:string):Promise<void>;
 
 export function SaveImage(arg1:model.SaveOptions,arg2:Array<number>):Promise<void>;
+
+export function SaveVideoAs(arg1:string):Promise<string>;
 
 export function SelectRecordingRegion():Promise<model.CropRegion>;
 

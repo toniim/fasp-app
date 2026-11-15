@@ -5,6 +5,7 @@ import './Recording.css';
 
 export interface RecordingResult {
   path: string;
+  url: string;
   seconds: number;
   width: number;
   height: number;

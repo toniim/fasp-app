@@ -85,7 +85,20 @@ Press the **Start / stop recording** hotkey (or **File → Record Screen…**, o
 
 Tick **Computer sound** (everything the computer plays) and/or **Microphone** (pick the device). Both are mixed into one audio track. With speakers, the microphone also hears the computer sound, so use headphones to avoid an echo. Your choices become the defaults for the next recording.
 
-While recording, Fasp shrinks to a small bar at the top of the screen with a timer and **Stop**. The bar never appears in the video. Press the hotkey again, click **Stop**, or use the tray menu to finish. The MP4 is saved in the Quick Save folder (`Recording_<date>_<time>.mp4`), listed in the tray **Recents**, and you can play it, show it in its folder, or copy its path.
+While recording, Fasp shrinks to a small bar at the top of the screen with a timer and **Stop**. The bar never appears in the video. Press the hotkey again, click **Stop**, or use the tray menu to finish.
+
+The MP4 is saved in the Quick Save folder (`Recording_<date>_<time>.mp4`) and opens right away in the editor's player, just as a screenshot opens in the editor:
+
+| Button | Shortcut | Result |
+|---|---|---|
+| Copy | `Ctrl+C` | Puts the video file on the clipboard, ready to paste into a chat, an email or a folder |
+| Save As | `Ctrl+Shift+S` | Saves a copy elsewhere |
+| Show in Folder | | Opens the folder with the file |
+| Upload | | Uploads the video to your fasp server and copies the link |
+| | `Space` / `K`, `←` `→` | Play/pause, skip 5 s |
+| | `Esc` | Close the player |
+
+Recordings in the tray **Recents** open in the same player.
 
 Windows 10 draws a yellow border around what is being recorded; Windows 11 does not.
 
@@ -191,6 +204,7 @@ Every pull request also builds, packages and smoke-tests the macOS app; the zip 
 main.go                      Wails app, bindings for the frontend, window and tray wiring
 app_zone.go                  Capture Zone and region selection bindings
 app_recording.go             Recording bindings, the recording bar, saving and results
+app_media.go                 Serves recordings to the in-app player, copy as file, Save As
 focus_windows.go             Gives the web view keyboard focus when the editor is shown
 exclude_capture_windows.go   Keeps the Fasp window out of recordings
 cmd/recspike/                Command-line recorder for measuring the pipeline without the UI
@@ -212,7 +226,8 @@ internal/
 frontend/src/
   components/EditorWindow/   Konva canvas editor, toolbar, zoom bar, action bar
   components/SettingsWindow/ Settings dialog and shortcut field
-  components/Recording/      Record dialog, recording bar, "recording saved" panel
+  components/Recording/      Record dialog, recording bar, "recording failed" panel
+  components/VideoViewer/    In-app player for recordings
   store/                     Zustand stores
   utils/editor-geometry.ts   Fit, zoom and pan maths
 build/                       Icons, Windows manifest and installer, macOS plists
