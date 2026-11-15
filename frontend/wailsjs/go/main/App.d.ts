@@ -34,6 +34,8 @@ export function PauseHotkeys():Promise<void>;
 
 export function QuickSaveImage(arg1:Array<number>):Promise<string>;
 
+export function ReadClipboardImage():Promise<string>;
+
 export function ReadImageFile(arg1:string):Promise<string>;
 
 export function RequestAccessibilityPermission():Promise<void>;

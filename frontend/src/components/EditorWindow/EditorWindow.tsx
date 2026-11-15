@@ -1,25 +1,55 @@
-import React, { useRef, useEffect, useLayoutEffect, useState } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useCallback, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Arrow, Text, Transformer, Line, Circle, Group } from 'react-konva';
 import { useEditorStore } from '../../store/editorStore';
 import { Annotation } from '../../types';
 import Toolbar from './Toolbar';
 import ActionBar from './ActionBar';
 import ZoomBar from './ZoomBar';
-import { GetVersion } from '../../../wailsjs/go/main/App';
-import { fitScale, scaleAnnotation, viewportSize, clampPosition, canPan, alignToDevicePixels } from '../../utils/editor-geometry';
+import Toast from '../Toast/Toast';
+import { GetVersion, ReadClipboardImage, ReadImageFile } from '../../../wailsjs/go/main/App';
+import { OnFileDrop, OnFileDropOff } from '../../../wailsjs/runtime/runtime';
+import { IMAGE_GAP, fitScale, viewportSize, clampPosition, keepInView, canPan, alignToDevicePixels } from '../../utils/editor-geometry';
 import './EditorWindow.css';
+
+// Node name of everything that counts as empty canvas for the marquee: the
+// background rect, and the image itself when it is the only one.
+const BACKGROUND_NAME = 'background-rect';
+const IMAGE_NAME = 'canvas-image';
+
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'];
+
+const isImagePath = (path: string): boolean => {
+  const dot = path.lastIndexOf('.');
+  return dot >= 0 && IMAGE_EXTENSIONS.includes(path.slice(dot + 1).toLowerCase());
+};
+
+// Wails rejects with the Go error string rather than an Error instance.
+const errorText = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  const text = String(error ?? '').trim();
+  return text === '' ? 'unknown error' : text;
+};
 
 const EditorWindow: React.FC = () => {
   const {
-    image,
+    images,
+    frame,
+    background,
     annotations,
     selectedTool,
     selectedAnnotationId,
+    selectedImageId,
+    updateImage,
+    removeImage,
+    setSelectedImage,
     selectedColor,
     selectedSize,
     cropRegion,
+    pendingCrop,
     setCropRegion,
     applyCrop,
+    keepPendingCrop,
+    addImage,
     addAnnotation,
     updateAnnotation,
     deleteAnnotation,
@@ -31,16 +61,29 @@ const EditorWindow: React.FC = () => {
     redo,
   } = useEditorStore();
 
-  const [konvaImage, setKonvaImage] = useState<HTMLImageElement | null>(null);
+  // One decoded element per image id. The map lives in a ref (elements are
+  // not render state); loadedCount bumps when one finishes decoding.
+  const imageElsRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const [loadedCount, setLoadedCount] = useState(0);
   const [blurPatternImage, setBlurPatternImage] = useState<HTMLImageElement | null>(null);
+  // Size of the frame on screen at zoom 1 (frame * scaleRatio).
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
-  // The stage is always the size of the available area; the image is drawn
-  // inside it. A stage sized to the image would clip the capture as soon as
-  // zoom pushes it past the (smaller) image box.
+  // The stage is always the size of the available area; the document is drawn
+  // inside it. A stage sized to the frame would clip the capture as soon as
+  // zoom pushes it past the (smaller) frame box.
   const [viewport, setViewport] = useState(() => viewportSize());
+  // View scale that fits the frame into the window. The document is in doc px;
+  // the stage scale is zoom * scaleRatio.
   const [scaleRatio, setScaleRatio] = useState(1);
-  const [previousScaleRatio, setPreviousScaleRatio] = useState(1);
   const [zoom, setZoom] = useState(1);
+  // Screen px -> doc px for lengths that should look the same on screen
+  // whatever the fit scale (editor chrome, creation thresholds).
+  const px = 1 / scaleRatio;
+  // Doc px -> screen px.
+  const viewScale = zoom * scaleRatio;
+  // Render as soon as one image is decoded: an image still decoding (a new
+  // add) is skipped for a frame instead of unmounting the whole stage.
+  const ready = images.some((im) => imageElsRef.current.has(im.id));
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   // Where the pointer and stage were when the pan started. The pan follows the
@@ -75,6 +118,22 @@ const EditorWindow: React.FC = () => {
   const textEditRef = useRef<HTMLTextAreaElement>(null);
   const transformerRef = useRef<any>(null);
   const shapeRefs = useRef<{ [key: string]: any }>({});
+  const imageNodeRefs = useRef<{ [key: string]: any }>({});
+  // A lone image acts as the canvas background (marquee and drawing start on
+  // it, as in a single-image shot); with two or more each image is an object
+  // that can be selected, moved and resized.
+  const imagesSelectable = images.length > 1;
+  const imageSelected = imagesSelectable && selectedImageId !== null;
+  // The crop tool crops the selected image; with none selected it crops the
+  // canvas. The drawn region is held inside the target image's box.
+  const cropTarget = selectedTool === 'crop' && imageSelected
+    ? images.find((im) => im.id === selectedImageId) ?? null
+    : null;
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const closeToast = useCallback(() => setToast(null), []);
+  // Latest view for the drop handler, which is registered once.
+  const viewRef = useRef({ frame, stagePos, viewScale });
+  viewRef.current = { frame, stagePos, viewScale };
 
   // Load version
   useEffect(() => {
@@ -85,32 +144,106 @@ const EditorWindow: React.FC = () => {
     });
   }, []);
 
-  // Load image
+  // Decode each image once, keyed by id; drop elements of images that left the
+  // document (a new shot, undo of an add).
   useEffect(() => {
-    if (!image) return;
+    const els = imageElsRef.current;
+    const ids = new Set(images.map((im) => im.id));
+    els.forEach((_, id) => {
+      if (!ids.has(id)) els.delete(id);
+    });
 
-    const img = new window.Image();
-    img.src = `data:image/png;base64,${image}`;
-    img.onload = () => {
-      setKonvaImage(img);
-      // Fit image to window. applyCrop already rescaled the annotations to
-      // this same scale, so they line up with the new image.
-      const scale = fitScale(img.width, img.height);
-      const size = {
-        width: img.width * scale,
-        height: img.height * scale,
+    let cancelled = false;
+    images.forEach((im) => {
+      if (els.has(im.id)) return;
+      const el = new window.Image();
+      el.onload = () => {
+        if (cancelled) return;
+        els.set(im.id, el);
+        setLoadedCount((n) => n + 1);
       };
-      const view = viewportSize();
-      setStageSize(size);
-      setViewport(view);
-      setScaleRatio(scale);
+      el.onerror = () => {
+        console.error('Failed to decode image', im.id);
+      };
+      el.src = `data:image/png;base64,${im.src}`;
+    });
 
-      // Open every new image fitted to the window so the whole capture is
-      // visible; "Real Size" in the zoom bar shows it pixel-exact.
-      setZoom(1);
-      setStagePos(clampPosition({ x: 0, y: 0 }, size, view));
+    return () => {
+      cancelled = true;
     };
-  }, [image]);
+  }, [images]);
+
+  // Fit the frame to the window and reset the view. Only view state changes:
+  // images and annotations are in doc px and never move with the window size.
+  const refit = useCallback(() => {
+    if (frame.width <= 0 || frame.height <= 0) return;
+    const scale = fitScale(frame.width, frame.height);
+    const size = {
+      width: frame.width * scale,
+      height: frame.height * scale,
+    };
+    const view = viewportSize();
+
+    setStageSize(size);
+    setViewport(view);
+    setScaleRatio(scale);
+
+    // Open every new frame fitted to the window so the whole capture is
+    // visible; "Real Size" in the zoom bar shows it pixel-exact. A resize
+    // refits as well: the editor window is shown and resized right after a
+    // capture, so anything else would undo the fit on open.
+    setZoom(1);
+    setStagePos(clampPosition({ x: 0, y: 0 }, size, view));
+  }, [frame.width, frame.height]);
+
+  // Set by an image move or resize just before it commits. The auto frame
+  // follows the images, so such an edit changes the frame; refitting then
+  // would rescale the whole view under the pointer.
+  const keepViewRef = useRef(false);
+  const prevFrameRef = useRef(frame);
+
+  // Layout effect: a new frame (crop, undo of a crop) must not paint once with
+  // the previous fit scale. After an image move or resize the zoom stays and
+  // every doc point stays where it was on screen; anything else refits.
+  useLayoutEffect(() => {
+    const prev = prevFrameRef.current;
+    prevFrameRef.current = frame;
+    if (keepViewRef.current) {
+      keepViewRef.current = false;
+      const size = { width: frame.width * scaleRatio, height: frame.height * scaleRatio };
+      setStageSize(size);
+      // Screen x = stagePos.x + (doc x - frame.x) * viewScale: shift the stage
+      // by the frame origin's move so the doc content does not jump, and pull
+      // it back only if part of the frame would leave the window.
+      setStagePos((pos) => keepInView(
+        {
+          x: pos.x + (frame.x - prev.x) * viewScale,
+          y: pos.y + (frame.y - prev.y) * viewScale,
+        },
+        { width: size.width * zoom, height: size.height * zoom },
+        viewport,
+      ));
+      return;
+    }
+    refit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frame.x, frame.y, frame.width, frame.height]);
+
+  // An image edit that left the frame unchanged must not carry the flag over
+  // to a later frame change (undo, add), which has to refit.
+  useLayoutEffect(() => {
+    keepViewRef.current = false;
+  });
+
+  // The listener exists from mount, so a resize that fires while images are
+  // still decoding (Windows maximises the window right after a capture) is not
+  // missed.
+  useEffect(() => {
+    window.addEventListener('resize', refit);
+    return () => {
+      window.removeEventListener('resize', refit);
+    };
+  }, [refit]);
 
   // Create blur pattern image using canvas (simple diagonal stripes)
   useEffect(() => {
@@ -144,61 +277,13 @@ const EditorWindow: React.FC = () => {
     }
   }, []);
 
-  // Handle window resize
-  useEffect(() => {
-    if (!konvaImage) return;
-
-    const handleResize = () => {
-      // Recalculate stage size to fit new window dimensions
-      const newScale = fitScale(konvaImage.width, konvaImage.height);
-
-      // Scale all existing annotations
-      const scaleFactor = newScale / scaleRatio;
-      if (scaleFactor !== 1 && annotations.length > 0) {
-        annotations.forEach(ann => {
-          updateAnnotation(ann.id, scaleAnnotation(ann, scaleFactor));
-        });
-      }
-
-      const size = {
-        width: konvaImage.width * newScale,
-        height: konvaImage.height * newScale,
-      };
-      const view = viewportSize();
-
-      setStageSize(size);
-      setViewport(view);
-      setPreviousScaleRatio(scaleRatio);
-      setScaleRatio(newScale);
-
-      // Refit after a resize. The editor window is shown and resized right
-      // after a capture, so anything else would undo the fit on open.
-      setZoom(1);
-      setStagePos(clampPosition({ x: 0, y: 0 }, size, view));
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    // The listener only exists once the image has loaded. On Windows the
-    // editor is shown and maximised before a fresh capture finishes decoding,
-    // so that resize can fire first and be missed, leaving the editor sized
-    // to the pre-maximise window. Catch up if the window changed meanwhile.
-    const current = viewportSize();
-    if (current.width !== viewport.width || current.height !== viewport.height) {
-      handleResize();
-    }
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [konvaImage, scaleRatio, annotations, updateAnnotation, viewport]);
-
   // Put the stage canvas on the device pixel grid; together with the
-  // device-aligned viewport size this keeps the canvas unscaled on screen.
+  // device-aligned viewport size this keeps the canvas unscaled on screen. The
+  // stage only mounts once the images are decoded, hence `ready`.
   useLayoutEffect(() => {
     const container = stageRef.current?.container();
     if (container) alignToDevicePixels(container);
-  }, [viewport]);
+  }, [viewport, ready]);
 
   // Handle scroll: Cmd/Ctrl + Scroll to zoom, regular scroll to pan when zoomed
   useEffect(() => {
@@ -282,7 +367,7 @@ const EditorWindow: React.FC = () => {
         canvasContainer.removeEventListener('wheel', handleWheel as EventListener);
       };
     }
-  }, [zoom, stagePos, stageSize, viewport]);
+  }, [zoom, stagePos, stageSize, viewport, ready]);
 
   // Center image when zoom <= 1 (from ZoomBar or any source)
   // Keep the image inside the viewport whenever zoom or the viewport changes
@@ -296,7 +381,10 @@ const EditorWindow: React.FC = () => {
       const next = clampPosition(prev, content, viewport);
       return prev.x === next.x && prev.y === next.y ? prev : next;
     });
-  }, [zoom, stageSize, viewport]);
+    // Not on stageSize: refit positions the view itself, and an image move or
+    // resize keeps the view where it is (see keepViewRef).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoom, viewport]);
 
   // Clear marquee multi-selection when switching tools
   useEffect(() => {
@@ -308,8 +396,12 @@ const EditorWindow: React.FC = () => {
   useEffect(() => {
     if (!transformerRef.current) return;
 
+    // No handles while cropping: the image is the crop target, not a thing to resize.
+    if (selectedImageId && imagesSelectable && selectedTool !== 'crop' && imageNodeRefs.current[selectedImageId]) {
+      transformerRef.current.nodes([imageNodeRefs.current[selectedImageId]]);
+      transformerRef.current.getLayer().batchDraw();
     // Don't attach while inline-editing a text box (its node is unmounted).
-    if (selectedAnnotationId && !editingTextId && shapeRefs.current[selectedAnnotationId]) {
+    } else if (selectedAnnotationId && !editingTextId && shapeRefs.current[selectedAnnotationId]) {
       const node = shapeRefs.current[selectedAnnotationId];
       transformerRef.current.nodes([node]);
       transformerRef.current.getLayer().batchDraw();
@@ -317,7 +409,7 @@ const EditorWindow: React.FC = () => {
       transformerRef.current.nodes([]);
       transformerRef.current.getLayer()?.batchDraw();
     }
-  }, [selectedAnnotationId, annotations, editingTextId]);
+  }, [selectedAnnotationId, annotations, editingTextId, selectedImageId, images, imagesSelectable, loadedCount, selectedTool]);
 
 
 
@@ -373,6 +465,63 @@ const EditorWindow: React.FC = () => {
     }
   }, [panCursor, selectedTool]);
 
+  const pasteImage = useCallback(async () => {
+    try {
+      const data = await ReadClipboardImage();
+      await addImage(data);
+    } catch (error) {
+      console.error('Failed to paste image:', error);
+      setToast({ message: `Paste failed: ${errorText(error)}`, type: 'error' });
+    }
+  }, [addImage]);
+
+  // Dropped image files become new images, the first with its top-left at the
+  // drop point, each next one to the right of the previous with the image gap.
+  useEffect(() => {
+    const handleDrop = async (x: number, y: number, paths: string[]) => {
+      const files = paths.filter(isImagePath);
+      const skipped = paths.length - files.length;
+
+      // Window coordinates -> doc px: undo the container offset and the pan,
+      // divide by the view scale, add the frame origin.
+      const stage = stageRef.current;
+      let cursor: { x: number; y: number } | undefined;
+      if (stage) {
+        const rect = stage.container().getBoundingClientRect();
+        const view = viewRef.current;
+        cursor = {
+          x: (x - rect.left - view.stagePos.x) / view.viewScale + view.frame.x,
+          y: (y - rect.top - view.stagePos.y) / view.viewScale + view.frame.y,
+        };
+      }
+
+      let failure = '';
+      for (const path of files) {
+        try {
+          const data = await ReadImageFile(path);
+          const placed = await addImage(data, cursor ? { at: cursor } : undefined);
+          if (!placed) return; // the shot was replaced meanwhile
+          if (cursor) cursor = { x: placed.x + placed.width + useEditorStore.getState().imageGap, y: placed.y };
+        } catch (error) {
+          console.error('Failed to add dropped image:', path, error);
+          failure = errorText(error);
+        }
+      }
+
+      const notes: string[] = [];
+      if (failure) notes.push(`Failed to add an image: ${failure}`);
+      if (skipped > 0) notes.push(`Skipped ${skipped} file${skipped === 1 ? '' : 's'} that ${skipped === 1 ? 'is' : 'are'} not an image`);
+      if (notes.length) setToast({ message: notes.join('. '), type: failure ? 'error' : 'info' });
+    };
+
+    OnFileDrop((x: number, y: number, paths: string[]) => {
+      void handleDrop(x, y, paths);
+    }, false);
+    return () => {
+      OnFileDropOff();
+    };
+  }, [addImage]);
+
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -382,12 +531,19 @@ const EditorWindow: React.FC = () => {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
 
+      // Add shot: Escape keeps the capture as it is (also with no region drawn).
+      if (pendingCrop && e.key === 'Escape') {
+        e.preventDefault();
+        keepPendingCrop();
+        return;
+      }
+
       // Handle crop mode shortcuts
       if (cropRegion) {
         if (e.key === 'Enter') {
           e.preventDefault();
           // Apply crop
-          applyCrop(scaleRatio);
+          applyCrop();
           return;
         } else if (e.key === 'Escape') {
           e.preventDefault();
@@ -422,6 +578,16 @@ const EditorWindow: React.FC = () => {
           return;
         }
 
+        // Cmd+V / Ctrl+V - Paste an image from the clipboard as a new image.
+        // Left alone while the focus is in a field, where it pastes text.
+        if (key === 'v' && !e.shiftKey) {
+          const el = e.target as HTMLElement | null;
+          if (el?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+          e.preventDefault();
+          if (!e.repeat) void pasteImage();
+          return;
+        }
+
         // Cmd+A / Ctrl+A - Select all (select tool)
         if (key === 'a') {
           e.preventDefault();
@@ -442,6 +608,8 @@ const EditorWindow: React.FC = () => {
             deleteAnnotations(ids);
             setSelectedAnnotation(null);
             setMarqueeSelectedIds([]);
+          } else if (selectedImageId) {
+            removeImage(selectedImageId);
           }
           return;
         }
@@ -461,6 +629,11 @@ const EditorWindow: React.FC = () => {
           deleteAnnotations(ids);
           setSelectedAnnotation(null);
           setMarqueeSelectedIds([]);
+          return;
+        }
+        if (selectedImageId) {
+          e.preventDefault();
+          removeImage(selectedImageId);
           return;
         }
       }
@@ -526,17 +699,27 @@ const EditorWindow: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [cropRegion, textInput, editingTextId, scaleRatio, annotations, marqueeSelectedIds, applyCrop, setCropRegion, setSelectedTool, selectedSize, setSelectedSize, undo, redo, selectedAnnotationId, deleteAnnotation, deleteAnnotations, setSelectedAnnotation]);
+  }, [cropRegion, pendingCrop, keepPendingCrop, pasteImage, textInput, editingTextId, annotations, marqueeSelectedIds, applyCrop, setCropRegion, setSelectedTool, selectedSize, setSelectedSize, undo, redo, selectedAnnotationId, deleteAnnotation, deleteAnnotations, setSelectedAnnotation, selectedImageId, removeImage]);
 
-  // Helper to get pointer position adjusted for zoom and pan
+  // Pointer position in doc px: undo the pan and the view scale, then add the
+  // layer offset (the frame origin sits at the stage origin).
   const getAdjustedPointerPosition = (stage: any) => {
     const pointer = stage.getPointerPosition();
     if (!pointer) return { x: 0, y: 0 };
     return {
-      x: (pointer.x - stagePos.x) / zoom,
-      y: (pointer.y - stagePos.y) / zoom,
+      x: (pointer.x - stagePos.x) / viewScale + frame.x,
+      y: (pointer.y - stagePos.y) / viewScale + frame.y,
     };
   };
+
+  // Holds a point inside the crop target's box (no-op for a canvas crop).
+  const clampToCropTarget = (p: { x: number; y: number }) =>
+    cropTarget
+      ? {
+          x: Math.min(cropTarget.x + cropTarget.width, Math.max(cropTarget.x, p.x)),
+          y: Math.min(cropTarget.y + cropTarget.height, Math.max(cropTarget.y, p.y)),
+        }
+      : p;
 
   const startPan = (stage: any) => {
     const pointer = stage.getPointerPosition();
@@ -549,8 +732,7 @@ const EditorWindow: React.FC = () => {
   const handleMouseDown = (e: any) => {
     const stage = e.target.getStage();
     const clickedOnStage = e.target === stage;
-    const clickedOnImage = e.target.className === 'Image';
-    const clickedOnBackground = clickedOnStage || clickedOnImage;
+    const clickedOnBackground = clickedOnStage || e.target.hasName(BACKGROUND_NAME);
 
     // Clicking a Transformer handle (resize/rotate anchor) must only transform
     // the selected object — never start drawing a new annotation or crop region.
@@ -570,7 +752,7 @@ const EditorWindow: React.FC = () => {
 
     // For crop tool, start drawing crop region (priority over Cmd/Ctrl panning)
     if (selectedTool === 'crop') {
-      const pos = getAdjustedPointerPosition(stage);
+      const pos = clampToCropTarget(getAdjustedPointerPosition(stage));
       setIsDrawing(true);
       setCropRegion({
         x: pos.x,
@@ -592,6 +774,7 @@ const EditorWindow: React.FC = () => {
       if (clickedOnBackground) {
         // Start a marquee selection; clear any current selection.
         setSelectedAnnotation(null);
+        setSelectedImage(null);
         setMarqueeSelectedIds([]);
         const pos = getAdjustedPointerPosition(stage);
         setSelectionRect({ x: pos.x, y: pos.y, width: 0, height: 0 });
@@ -660,11 +843,14 @@ const EditorWindow: React.FC = () => {
       type: selectedTool,
       x: pos.x,
       y: pos.y,
+      unit: px,
     };
 
-    // Calculate actual size based on selectedSize
-    const strokeWidth = selectedSize === 1 ? 1 : selectedSize === 2 ? 2 : selectedSize === 3 ? 4 : selectedSize === 4 ? 6 : 8;
-    const fontSize = selectedSize === 1 ? 12 : selectedSize === 2 ? 16 : selectedSize === 3 ? 20 : selectedSize === 4 ? 24 : 32;
+    // Calculate actual size based on selectedSize. The presets are screen
+    // sizes; dividing by scaleRatio (times px) turns them into doc px so they
+    // look the same on screen as before.
+    const strokeWidth = (selectedSize === 1 ? 1 : selectedSize === 2 ? 2 : selectedSize === 3 ? 4 : selectedSize === 4 ? 6 : 8) * px;
+    const fontSize = (selectedSize === 1 ? 12 : selectedSize === 2 ? 16 : selectedSize === 3 ? 20 : selectedSize === 4 ? 24 : 32) * px;
 
     switch (selectedTool) {
       case 'rectangle':
@@ -780,10 +966,11 @@ const EditorWindow: React.FC = () => {
 
     // Handle crop region drawing
     if (selectedTool === 'crop' && cropRegion) {
+      const end = clampToCropTarget(pos);
       setCropRegion({
         ...cropRegion,
-        width: pos.x - cropRegion.x,
-        height: pos.y - cropRegion.y,
+        width: end.x - cropRegion.x,
+        height: end.y - cropRegion.y,
       });
       return;
     }
@@ -832,7 +1019,7 @@ const EditorWindow: React.FC = () => {
       const rw = Math.abs(selectionRect.width);
       const rh = Math.abs(selectionRect.height);
 
-      if (rw > 3 && rh > 3) {
+      if (rw > 3 * px && rh > 3 * px) {
         const ids = annotations
           .filter((ann) => {
             const node = shapeRefs.current[ann.id];
@@ -866,7 +1053,7 @@ const EditorWindow: React.FC = () => {
         height: Math.abs(cropRegion.height),
       };
 
-      if (normalizedRegion.width > 10 && normalizedRegion.height > 10) {
+      if (normalizedRegion.width > 10 * px && normalizedRegion.height > 10 * px) {
         // Keep the normalized region visible
         setCropRegion(normalizedRegion);
       } else {
@@ -879,8 +1066,8 @@ const EditorWindow: React.FC = () => {
 
     // Text tool: finalize the box, then start inline editing immediately.
     if (selectedTool === 'text') {
-      const minW = 120;
-      const minH = (currentAnnotation.fontSize || 16) + 12;
+      const minW = 120 * px;
+      const minH = (currentAnnotation.fontSize || 16 * px) + 12 * px;
       let x = currentAnnotation.x;
       let y = currentAnnotation.y;
       let w = currentAnnotation.width || 0;
@@ -914,7 +1101,7 @@ const EditorWindow: React.FC = () => {
     ) {
       const [sx, sy, ex, ey] = annToAdd.points;
       const dist = Math.hypot(ex - sx, ey - sy);
-      const MIN_LEN = 60;
+      const MIN_LEN = 60 * px;
       if (dist < MIN_LEN) {
         // Extend along the drag direction; default to rightward on a pure click.
         let ux = ex - sx;
@@ -933,7 +1120,7 @@ const EditorWindow: React.FC = () => {
     if (annToAdd.width !== 0 || annToAdd.height !== 0 || annToAdd.points) {
       // For arrow-text, start inline editing of the label (same UX as the text tool)
       if (selectedTool === 'arrow-text' && annToAdd.points) {
-        const tempAnnotation = { ...annToAdd, fontSize: annToAdd.fontSize || 16 };
+        const tempAnnotation = { ...annToAdd, fontSize: annToAdd.fontSize || 16 * px };
         addAnnotation(tempAnnotation);
         setSelectedAnnotation(tempAnnotation.id);
         setEditingTextId(tempAnnotation.id);
@@ -977,8 +1164,9 @@ const EditorWindow: React.FC = () => {
       x: textInput.x,
       y: textInput.y,
       text: textValue,
-      fontSize: textInput.fontSize || 16,
+      fontSize: textInput.fontSize || 16 * px,
       fill: selectedColor,
+      unit: px,
     });
 
     setTextInput(null);
@@ -998,10 +1186,10 @@ const EditorWindow: React.FC = () => {
   // Position of the arrow-text label: just above the arrow's start point (its
   // tail). Stable (independent of text/direction) so it doesn't jump while
   // typing and matches between the inline editor and the rendered text.
-  const arrowTextLabelPos = (points: number[], _text: string, fontSize: number) => {
+  const arrowTextLabelPos = (points: number[], _text: string, fontSize: number, unit: number) => {
     const sx = points[0] || 0;
     const sy = points[1] || 0;
-    const gap = 6;
+    const gap = 6 * unit;
     return { x: sx, y: sy - fontSize - gap };
   };
 
@@ -1133,19 +1321,19 @@ const EditorWindow: React.FC = () => {
       updateAnnotation(annId, {
         x: node.x(),
         y: node.y(),
-        width: Math.max(5, (ann.width || 0) * scaleX),
-        height: Math.max(5, (ann.height || 0) * scaleY),
+        width: Math.max(5 * px, (ann.width || 0) * scaleX),
+        height: Math.max(5 * px, (ann.height || 0) * scaleY),
         rotation: node.rotation(),
       });
     } else if (ann.type === 'text') {
       // Resize scales the font with the vertical scale (corner/vertical drag
       // grows the text); horizontal-only drag just changes the wrap width.
-      const newFontSize = Math.max(8, (ann.fontSize || 16) * scaleY);
+      const newFontSize = Math.max(8 * px, (ann.fontSize || 16 * px) * scaleY);
       updateAnnotation(annId, {
         x: node.x(),
         y: node.y(),
-        width: Math.max(20, (ann.width || 0) * scaleX),
-        height: Math.max(newFontSize + 8, (ann.height || 0) * scaleY),
+        width: Math.max(20 * px, (ann.width || 0) * scaleX),
+        height: Math.max(newFontSize + 8 * px, (ann.height || 0) * scaleY),
         fontSize: newFontSize,
         rotation: node.rotation(),
       });
@@ -1171,8 +1359,63 @@ const EditorWindow: React.FC = () => {
     }
   };
 
+  // Images are objects only with the select tool; with a drawing tool a click
+  // on an image starts an annotation, as on a single-image shot.
+  const imageInteractive = imagesSelectable && selectedTool === 'select' && !shiftPanning;
+
+  const handleImageMouseDown = (id: string) => {
+    if (imageInteractive) {
+      setMarqueeSelectedIds([]);
+      setSelectedImage(id);
+    }
+  };
+
+  const handleImageMouseEnter = () => {
+    const stage = stageRef.current;
+    if (stage && imageInteractive) stage.container().style.cursor = 'move';
+  };
+
+  const handleImageMouseLeave = () => {
+    const stage = stageRef.current;
+    if (stage && !isPanning) {
+      stage.container().style.cursor = panCursor ? 'grab' : selectedTool === 'crop' ? 'crosshair' : 'default';
+    }
+  };
+
+  // A move commits on drag end only, so one drag is one undo step.
+  const handleImageDragEnd = (e: any, id: string) => {
+    const node = e.target;
+    const x = Math.round(node.x());
+    const y = Math.round(node.y());
+    node.position({ x, y });
+    keepViewRef.current = true;
+    updateImage(id, { x, y });
+  };
+
+  // The transformer scales the node; bake the scale into the size (keeping the
+  // aspect ratio) and reset it, then commit once.
+  const handleImageTransformEnd = (e: any, id: string) => {
+    const node = e.target;
+    const im = images.find((i) => i.id === id);
+    if (!im) return;
+    const width = Math.max(1, Math.round(im.width * node.scaleX()));
+    const height = Math.max(1, Math.round((width * im.height) / im.width));
+    const x = Math.round(node.x());
+    const y = Math.round(node.y());
+    node.scaleX(1);
+    node.scaleY(1);
+    node.position({ x, y });
+    node.size({ width, height });
+    keepViewRef.current = true;
+    updateImage(id, { x, y, width, height });
+  };
+
   const renderAnnotation = (ann: Annotation) => {
     const isSelected = ann.id === selectedAnnotationId || marqueeSelectedIds.includes(ann.id);
+    // Fixed visual sizes the annotation owns (arrow head, numbered circle,
+    // label gap, blur tile) scale with its creation-time unit; editor chrome
+    // (selection outline, hit areas, control point) scales with the current px.
+    const u = ann.unit ?? 1;
     // Shift-panning must move the view, not the annotation under the cursor,
     // and must not select it either (Konva still fires click on mouse-up).
     const isDraggable = !shiftPanning && (selectedTool === 'select' || isSelected);
@@ -1194,11 +1437,11 @@ const EditorWindow: React.FC = () => {
             height={ann.height}
             rotation={ann.rotation || 0}
             stroke={isSelected ? '#007bff' : ann.stroke}
-            strokeWidth={isSelected ? 3 : ann.strokeWidth}
+            strokeWidth={isSelected ? 3 * px : ann.strokeWidth}
             // Transparent fill makes the whole interior a selectable/draggable
             // area, and a wide hit-stroke makes the border easy to grab.
             fill={ann.fill || 'transparent'}
-            hitStrokeWidth={Math.max(ann.strokeWidth || 2, 16)}
+            hitStrokeWidth={Math.max(ann.strokeWidth || 2 * px, 16 * px)}
             draggable={isDraggable}
             onClick={selectOnClick}
             onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
@@ -1222,7 +1465,7 @@ const EditorWindow: React.FC = () => {
             fill={ann.fill}
             opacity={ann.opacity}
             stroke={isSelected ? '#007bff' : undefined}
-            strokeWidth={isSelected ? 2 : 0}
+            strokeWidth={isSelected ? 2 * px : 0}
             draggable={isDraggable}
             onClick={selectOnClick}
             onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
@@ -1251,10 +1494,11 @@ const EditorWindow: React.FC = () => {
             rotation={ann.rotation || 0}
             fillPatternImage={blurPatternImage || undefined}
             fillPatternRepeat="repeat"
+            fillPatternScale={{ x: u, y: u }}
             fill={blurPatternImage ? undefined : '#000000'}
             opacity={1}
             stroke={isSelected ? '#007bff' : undefined}
-            strokeWidth={isSelected ? 2 : 0}
+            strokeWidth={isSelected ? 2 * px : 0}
             draggable={isDraggable}
             onClick={selectOnClick}
             onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
@@ -1289,9 +1533,9 @@ const EditorWindow: React.FC = () => {
               stroke={ann.stroke}
               strokeWidth={ann.strokeWidth}
               fill={ann.stroke}
-              pointerLength={10}
-              pointerWidth={10}
-              hitStrokeWidth={20}
+              pointerLength={10 * u}
+              pointerWidth={10 * u}
+              hitStrokeWidth={20 * px}
               draggable={isDraggable}
               onClick={selectOnClick}
               onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
@@ -1311,7 +1555,7 @@ const EditorWindow: React.FC = () => {
           const prevY = curvedPoints[prevIdx + 1];
 
           const angle = Math.atan2(arrowEndY - prevY, arrowEndX - prevX);
-          const arrowLength = 12;
+          const arrowLength = 12 * u;
 
           const arrowPoint1X = arrowEndX - arrowLength * Math.cos(angle - Math.PI / 6);
           const arrowPoint1Y = arrowEndY - arrowLength * Math.sin(angle - Math.PI / 6);
@@ -1334,15 +1578,15 @@ const EditorWindow: React.FC = () => {
               <Line
                 points={curvedPoints}
                 stroke={isSelected ? '#007bff' : ann.stroke}
-                strokeWidth={isSelected ? 3 : ann.strokeWidth}
-                hitStrokeWidth={20}
+                strokeWidth={isSelected ? 3 * px : ann.strokeWidth}
+                hitStrokeWidth={20 * px}
                 lineCap="round"
                 lineJoin="round"
               />
               <Line
                 points={[arrowPoint1X, arrowPoint1Y, arrowEndX, arrowEndY, arrowPoint2X, arrowPoint2Y]}
                 stroke={isSelected ? '#007bff' : ann.stroke}
-                strokeWidth={isSelected ? 3 : ann.strokeWidth}
+                strokeWidth={isSelected ? 3 * px : ann.strokeWidth}
                 fill={isSelected ? '#007bff' : ann.stroke}
                 closed={true}
               />
@@ -1351,10 +1595,10 @@ const EditorWindow: React.FC = () => {
                 <Circle
                   x={controlX}
                   y={controlY}
-                  radius={6}
+                  radius={6 * px}
                   fill="#8b5cf6"
                   stroke="white"
-                  strokeWidth={2}
+                  strokeWidth={2 * px}
                   draggable={true}
                   onDragStart={(e) => {
                     // Prevent group from dragging when dragging control point
@@ -1387,8 +1631,8 @@ const EditorWindow: React.FC = () => {
         }
       case 'arrow-text': {
         const isEditingLabel = editingTextId === ann.id;
-        const atFontSize = ann.fontSize || 16;
-        const atLabel = arrowTextLabelPos(ann.points || [], ann.text || '', atFontSize);
+        const atFontSize = ann.fontSize || 16 * u;
+        const atLabel = arrowTextLabelPos(ann.points || [], ann.text || '', atFontSize, u);
         return (
           <Group
             key={ann.id}
@@ -1410,11 +1654,11 @@ const EditorWindow: React.FC = () => {
             <Arrow
               points={ann.points || []}
               stroke={isSelected ? '#007bff' : ann.stroke}
-              strokeWidth={isSelected ? 3 : ann.strokeWidth}
+              strokeWidth={isSelected ? 3 * px : ann.strokeWidth}
               fill={isSelected ? '#007bff' : ann.stroke}
-              pointerLength={10}
-              pointerWidth={10}
-              hitStrokeWidth={20}
+              pointerLength={10 * u}
+              pointerWidth={10 * u}
+              hitStrokeWidth={20 * px}
             />
             {/* Plain text label (rendered like the text tool); hidden while editing */}
             {!isEditingLabel && ann.text && (
@@ -1431,7 +1675,7 @@ const EditorWindow: React.FC = () => {
                 x={atLabel.x}
                 y={atLabel.y}
                 text="Double-click to add text"
-                fontSize={12}
+                fontSize={12 * px}
                 fill="#999"
                 fontStyle="italic"
               />
@@ -1441,7 +1685,7 @@ const EditorWindow: React.FC = () => {
       }
       case 'numbered-arrow':
         const [startX, startY, endX, endY] = ann.points || [0, 0, 0, 0];
-        const circleRadius = 16;
+        const circleRadius = 16 * u;
 
         return (
           <Group
@@ -1459,11 +1703,11 @@ const EditorWindow: React.FC = () => {
             <Arrow
               points={ann.points || []}
               stroke={isSelected ? '#007bff' : ann.stroke}
-              strokeWidth={isSelected ? 3 : ann.strokeWidth}
+              strokeWidth={isSelected ? 3 * px : ann.strokeWidth}
               fill={isSelected ? '#007bff' : ann.stroke}
-              pointerLength={10}
-              pointerWidth={10}
-              hitStrokeWidth={20}
+              pointerLength={10 * u}
+              pointerWidth={10 * u}
+              hitStrokeWidth={20 * px}
             />
             <Circle
               x={endX}
@@ -1471,7 +1715,7 @@ const EditorWindow: React.FC = () => {
               radius={circleRadius}
               fill={isSelected ? '#007bff' : ann.fill}
               stroke={isSelected ? '#007bff' : ann.stroke}
-              strokeWidth={2}
+              strokeWidth={2 * u}
             />
             <Text
               x={endX - circleRadius}
@@ -1479,7 +1723,7 @@ const EditorWindow: React.FC = () => {
               width={circleRadius * 2}
               height={circleRadius * 2}
               text={String(ann.number || 1)}
-              fontSize={16}
+              fontSize={16 * u}
               fontStyle="bold"
               fill="white"
               align="center"
@@ -1492,7 +1736,7 @@ const EditorWindow: React.FC = () => {
         // Show a dashed box outline while the box is empty (being drawn / before
         // any text is typed). Once it has text it renders clean like other shapes.
         const showBorder = !(ann.text && ann.text.trim());
-        const textPad = 4;
+        const textPad = 4 * u;
         return (
           <Group key={ann.id}>
             {showBorder && (
@@ -1503,8 +1747,8 @@ const EditorWindow: React.FC = () => {
                 height={ann.height}
                 rotation={ann.rotation || 0}
                 stroke={isSelected || isEditing ? '#007bff' : 'rgba(120, 120, 120, 0.7)'}
-                strokeWidth={1}
-                dash={[4, 4]}
+                strokeWidth={px}
+                dash={[4 * px, 4 * px]}
                 listening={false}
               />
             )}
@@ -1520,7 +1764,7 @@ const EditorWindow: React.FC = () => {
                 padding={textPad}
                 wrap="word"
                 text={ann.text || ''}
-                fontSize={ann.fontSize || 16}
+                fontSize={ann.fontSize || 16 * u}
                 rotation={ann.rotation || 0}
                 fill={isSelected ? '#007bff' : ann.fill}
                 draggable={isDraggable}
@@ -1544,7 +1788,7 @@ const EditorWindow: React.FC = () => {
     }
   };
 
-  if (!image || !konvaImage) {
+  if (!ready) {
     return <div className="editor-loading">Loading...</div>;
   }
 
@@ -1556,8 +1800,8 @@ const EditorWindow: React.FC = () => {
           ref={stageRef as any}
           width={viewport.width}
           height={viewport.height}
-          scaleX={zoom}
-          scaleY={zoom}
+          scaleX={viewScale}
+          scaleY={viewScale}
           x={stagePos.x}
           y={stagePos.y}
           draggable={false}
@@ -1565,16 +1809,63 @@ const EditorWindow: React.FC = () => {
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
         >
-          <Layer>
-            <KonvaImage image={konvaImage} width={stageSize.width} height={stageSize.height} />
-            {/* Image border */}
+          {/* The layer offset puts the frame origin at the stage origin; the
+              clip keeps everything outside the frame (cropped-away pixels,
+              annotations that left it) off screen. */}
+          <Layer
+            offsetX={frame.x}
+            offsetY={frame.y}
+            clipX={frame.x}
+            clipY={frame.y}
+            clipWidth={frame.width}
+            clipHeight={frame.height}
+          >
+            {/* Background under the images, covering the frame. A shot with one
+                image keeps its own pixels (a transparent PNG stays transparent);
+                the color only shows once there are two or more images. The rect
+                is always present as the empty-canvas hit target. */}
             <Rect
-              x={0}
-              y={0}
-              width={stageSize.width}
-              height={stageSize.height}
+              name={BACKGROUND_NAME}
+              x={frame.x}
+              y={frame.y}
+              width={frame.width}
+              height={frame.height}
+              fill={imagesSelectable ? background : 'transparent'}
+            />
+            {images.map((im) => {
+              const el = imageElsRef.current.get(im.id);
+              return el ? (
+                <KonvaImage
+                  key={im.id}
+                  ref={(node) => {
+                    if (node) imageNodeRefs.current[im.id] = node;
+                    else delete imageNodeRefs.current[im.id];
+                  }}
+                  name={imagesSelectable ? IMAGE_NAME : BACKGROUND_NAME}
+                  image={el}
+                  // Non-destructive crop in source px; a zero-size crop draws the whole image.
+                  crop={im.crop ?? { x: 0, y: 0, width: 0, height: 0 }}
+                  x={im.x}
+                  y={im.y}
+                  width={im.width}
+                  height={im.height}
+                  draggable={imageInteractive}
+                  onMouseDown={() => handleImageMouseDown(im.id)}
+                  onMouseEnter={handleImageMouseEnter}
+                  onMouseLeave={handleImageMouseLeave}
+                  onDragEnd={(e) => handleImageDragEnd(e, im.id)}
+                  onTransformEnd={(e) => handleImageTransformEnd(e, im.id)}
+                />
+              ) : null;
+            })}
+            {/* Frame border */}
+            <Rect
+              x={frame.x}
+              y={frame.y}
+              width={frame.width}
+              height={frame.height}
               stroke="rgba(139, 92, 246, 0.4)"
-              strokeWidth={2}
+              strokeWidth={2 * px}
               listening={false}
             />
             {annotations.map(renderAnnotation)}
@@ -1588,8 +1879,8 @@ const EditorWindow: React.FC = () => {
                 height={Math.abs(selectionRect.height)}
                 fill="rgba(0, 123, 255, 0.1)"
                 stroke="#007bff"
-                strokeWidth={1}
-                dash={[4, 4]}
+                strokeWidth={px}
+                dash={[4 * px, 4 * px]}
                 listening={false}
               />
             )}
@@ -1598,32 +1889,35 @@ const EditorWindow: React.FC = () => {
               const normY = cropRegion.height < 0 ? cropRegion.y + cropRegion.height : cropRegion.y;
               const normW = Math.abs(cropRegion.width);
               const normH = Math.abs(cropRegion.height);
+              // Dim only what the crop cuts away: the target image, or the
+              // whole frame for a canvas crop. Other images stay as they are.
+              const dim = cropTarget ?? frame;
               
               return (
                 <Group>
                   {/* Top Dimmer */}
                   <Rect
-                    x={0}
-                    y={0}
-                    width={stageSize.width}
-                    height={Math.max(0, normY)}
+                    x={dim.x}
+                    y={dim.y}
+                    width={dim.width}
+                    height={Math.max(0, normY - dim.y)}
                     fill="rgba(0, 0, 0, 0.5)"
                     listening={false}
                   />
                   {/* Bottom Dimmer */}
                   <Rect
-                    x={0}
+                    x={dim.x}
                     y={normY + normH}
-                    width={stageSize.width}
-                    height={Math.max(0, stageSize.height - (normY + normH))}
+                    width={dim.width}
+                    height={Math.max(0, dim.y + dim.height - (normY + normH))}
                     fill="rgba(0, 0, 0, 0.5)"
                     listening={false}
                   />
                   {/* Left Dimmer */}
                   <Rect
-                    x={0}
+                    x={dim.x}
                     y={normY}
-                    width={Math.max(0, normX)}
+                    width={Math.max(0, normX - dim.x)}
                     height={normH}
                     fill="rgba(0, 0, 0, 0.5)"
                     listening={false}
@@ -1632,7 +1926,7 @@ const EditorWindow: React.FC = () => {
                   <Rect
                     x={normX + normW}
                     y={normY}
-                    width={Math.max(0, stageSize.width - (normX + normW))}
+                    width={Math.max(0, dim.x + dim.width - (normX + normW))}
                     height={normH}
                     fill="rgba(0, 0, 0, 0.5)"
                     listening={false}
@@ -1644,14 +1938,33 @@ const EditorWindow: React.FC = () => {
                     width={normW}
                     height={normH}
                     stroke="#007bff"
-                    strokeWidth={2}
-                    dash={[10, 5]}
+                    strokeWidth={2 * px}
+                    dash={[10 * px, 5 * px]}
                     fill="transparent"
                     listening={false}
                   />
                 </Group>
               );
             })()}
+          </Layer>
+          {/* Editor chrome that must not be clipped by the frame: transformer
+              handles and the hover box of an annotation at the frame edge reach
+              outside it. Same offset as the document layer, so both share doc px.
+              The export region is the frame, so nothing outside it is saved. */}
+          <Layer name="editor-chrome" offsetX={frame.x} offsetY={frame.y}>
+            {/* Marks the image the crop tool will crop, before and while the
+                region is drawn. */}
+            {cropTarget && (
+              <Rect
+                x={cropTarget.x - 2 * px}
+                y={cropTarget.y - 2 * px}
+                width={cropTarget.width + 4 * px}
+                height={cropTarget.height + 4 * px}
+                stroke="#007bff"
+                strokeWidth={3 * px}
+                listening={false}
+              />
+            )}
             {/* Hover bounding box: shows the selectable rectangular area when
                 hovering an annotation that isn't the currently selected one. */}
             {hoveredAnnotationId && hoveredAnnotationId !== selectedAnnotationId && (() => {
@@ -1660,7 +1973,7 @@ const EditorWindow: React.FC = () => {
               const layer = node.getLayer();
               if (!layer) return null;
               const box = node.getClientRect({ relativeTo: layer });
-              const pad = 6;
+              const pad = 6 * px;
               return (
                 <Rect
                   x={box.x - pad}
@@ -1668,17 +1981,20 @@ const EditorWindow: React.FC = () => {
                   width={box.width + pad * 2}
                   height={box.height + pad * 2}
                   stroke="#007bff"
-                  strokeWidth={1}
-                  dash={[4, 4]}
+                  strokeWidth={px}
+                  dash={[4 * px, 4 * px]}
                   fill="rgba(0, 123, 255, 0.06)"
-                  cornerRadius={3}
+                  cornerRadius={3 * px}
                   listening={false}
                 />
               );
             })()}
             <Transformer
               ref={transformerRef}
-              rotateEnabled={true}
+              // Images keep their aspect ratio and do not rotate; annotations
+              // keep the full handle set.
+              rotateEnabled={!imageSelected}
+              keepRatio={imageSelected}
               rotateAnchorOffset={24}
               boundBoxFunc={(oldBox, newBox) => {
                 // Limit resize
@@ -1687,7 +2003,9 @@ const EditorWindow: React.FC = () => {
                 }
                 return newBox;
               }}
-              enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
+              enabledAnchors={imageSelected
+                ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+                : ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
               anchorSize={12}
               anchorStroke="#007bff"
               anchorFill="#ffffff"
@@ -1734,26 +2052,28 @@ const EditorWindow: React.FC = () => {
           const ann = annotations.find((a) => a.id === editingTextId);
           if (!ann) return null;
           const rect = stageRef.current.container().getBoundingClientRect();
-          const fontSize = ann.fontSize || 16;
+          const u = ann.unit ?? 1;
+          const fontSize = ann.fontSize || 16 * u;
 
           // Text-box uses its own x/y/width; arrow-text uses the label anchor.
+          // Everything is in doc px; viewScale maps it to screen px.
           let lx: number, ly: number, w: number, h: number, pad: number;
           if (ann.type === 'arrow-text') {
-            const lp = arrowTextLabelPos(ann.points || [], ann.text || '', fontSize);
+            const lp = arrowTextLabelPos(ann.points || [], ann.text || '', fontSize, u);
             lx = lp.x;
             ly = lp.y;
-            w = 180;
-            h = fontSize + 8;
+            w = 180 * u;
+            h = fontSize + 8 * u;
             pad = 0;
           } else {
             lx = ann.x || 0;
             ly = ann.y || 0;
             w = ann.width || 0;
             h = ann.height || 0;
-            pad = 4;
+            pad = 4 * u;
           }
-          const left = rect.left + lx * zoom + stagePos.x;
-          const top = rect.top + ly * zoom + stagePos.y;
+          const left = rect.left + (lx - frame.x) * viewScale + stagePos.x;
+          const top = rect.top + (ly - frame.y) * viewScale + stagePos.y;
           return (
             <textarea
               ref={textEditRef}
@@ -1767,13 +2087,13 @@ const EditorWindow: React.FC = () => {
                 position: 'fixed',
                 left,
                 top,
-                width: w * zoom,
-                height: h * zoom,
-                padding: pad * zoom,
+                width: w * viewScale,
+                height: h * viewScale,
+                padding: pad * viewScale,
                 boxSizing: 'border-box',
                 margin: 0,
                 fontFamily: 'Arial, sans-serif',
-                fontSize: (ann.fontSize || 16) * zoom,
+                fontSize: fontSize * viewScale,
                 lineHeight: 1,
                 color: ann.fill || ann.stroke || '#000000',
                 background: 'transparent',
@@ -1790,7 +2110,8 @@ const EditorWindow: React.FC = () => {
           );
         })()}
       </div>
-      <ActionBar stageRef={stageRef} scaleRatio={scaleRatio} stageSize={stageSize} />
+      <ActionBar stageRef={stageRef} frame={frame} />
+      {toast && <Toast message={toast.message} type={toast.type} onClose={closeToast} />}
       <ZoomBar zoom={zoom} onZoomChange={setZoom} scaleRatio={scaleRatio} />
       {version && (
         <div className="version-badge">
