@@ -186,6 +186,46 @@
   gap: 2px;
 }
 
+.toolbar-images {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 8px;
+}
+
+.action-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+.gap-select {
+  height: 24px;
+  margin-left: 4px;
+  padding: 0 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.gap-select option {
+  color: #000;
+}
+
+.background-swatch {
+  width: 22px;
+  height: 22px;
+  margin-left: 6px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
 .action-button {
   display: flex;
   align-items: center;

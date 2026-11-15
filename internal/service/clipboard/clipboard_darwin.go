@@ -6,7 +6,9 @@ package clipboard
 #cgo CFLAGS: -x objective-c -fobjc-arc
 #cgo LDFLAGS: -framework AppKit
 #import <AppKit/AppKit.h>
+#include <limits.h>
 #include <stdlib.h>
+#include <string.h>
 
 static int fasp_copy_file(const char *path) {
     @autoreleasepool {
@@ -23,6 +25,38 @@ static int fasp_copy_png(const void *bytes, int length) {
         NSPasteboard *pb = [NSPasteboard generalPasteboard];
         [pb clearContents];
         return [pb setData:data forType:NSPasteboardTypePNG] ? 1 : 0;
+    }
+}
+
+// Returns a malloc'd PNG buffer (caller frees) and its length, or NULL when
+// the pasteboard has no image. Prefers PNG; falls back to TIFF (what Preview
+// and many apps put there), converted to PNG.
+static void *fasp_read_png(int *outLength) {
+    @autoreleasepool {
+        *outLength = 0;
+        NSPasteboard *pb = [NSPasteboard generalPasteboard];
+        NSData *png = [pb dataForType:NSPasteboardTypePNG];
+        if (png == nil) {
+            NSData *tiff = [pb dataForType:NSPasteboardTypeTIFF];
+            if (tiff == nil) {
+                return NULL;
+            }
+            NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:tiff];
+            if (rep == nil) {
+                return NULL;
+            }
+            png = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+        }
+        if (png == nil || [png length] == 0 || [png length] > INT_MAX) {
+            return NULL;
+        }
+        void *buf = malloc([png length]);
+        if (buf == NULL) {
+            return NULL;
+        }
+        memcpy(buf, [png bytes], [png length]);
+        *outLength = (int)[png length];
+        return buf;
     }
 }
 */
@@ -67,4 +101,15 @@ func (s *serviceImpl) CopyFiles(paths []string) error {
 		return errors.New("failed to copy files: pasteboard rejected the file")
 	}
 	return nil
+}
+
+// ReadImage returns the pasteboard image as PNG bytes.
+func (s *serviceImpl) ReadImage() ([]byte, error) {
+	var n C.int
+	buf := C.fasp_read_png(&n)
+	if buf == nil {
+		return nil, ErrNoImage
+	}
+	defer C.free(buf)
+	return C.GoBytes(buf, n), nil
 }

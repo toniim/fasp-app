@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { CaptureActiveDisplay, CaptureZone, IsRecording, OpenImageDialog, ReadImageFile, ShowWindow } from '../wailsjs/go/main/App';
-import { useEditorStore } from './store/editorStore';
+import { useEditorStore, selectHasContent } from './store/editorStore';
 import EditorWindow from './components/EditorWindow/EditorWindow';
 import SettingsWindow from './components/SettingsWindow/SettingsWindow';
 import PermissionWarning from './components/PermissionWarning/PermissionWarning';
@@ -53,7 +53,8 @@ const Icons = {
 };
 
 function App() {
-  const { image, setImage } = useEditorStore();
+  const setImage = useEditorStore((state) => state.setImage);
+  const hasImage = useEditorStore(selectHasContent);
   const [isCapturing, setIsCapturing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -155,7 +156,7 @@ function App() {
       ShowWindow();
 
       setVideo(null);
-      setImage(result.data);
+      await setImage(result.data);
     } catch (error) {
       console.error('Failed to capture screenshot:', error);
 
@@ -171,7 +172,7 @@ function App() {
   // Freeze the screen, let the user drag a zone, and open only that zone.
   const handleCaptureZone = async () => {
     if (recordingRef.current) return;
-    const hadImage = !!useEditorStore.getState().image;
+    const hadImage = selectHasContent(useEditorStore.getState());
     try {
       setIsCapturing(true);
       WindowHide();
@@ -185,7 +186,7 @@ function App() {
       }
       ShowWindow();
       setVideo(null);
-      setImage(result.data, 'select');
+      await setImage(result.data, 'select');
     } catch (error) {
       console.error('Failed to capture zone:', error);
       ShowWindow();
@@ -213,7 +214,7 @@ function App() {
 
       // Set image in editor
       setVideo(null);
-      setImage(imageData);
+      await setImage(imageData);
     } catch (error) {
       console.error('Failed to open image:', error);
       setToast({ message: `Failed to open image: ${error}`, type: 'error' });
@@ -230,7 +231,7 @@ function App() {
 
       {video ? (
         <VideoViewer video={video} onClose={() => setVideo(null)} />
-      ) : image ? (
+      ) : hasImage ? (
         <EditorWindow />
       ) : (
         <div className="welcome-screen">

@@ -86,6 +86,10 @@ export function QuickSaveImage(arg1) {
   return window['go']['main']['App']['QuickSaveImage'](arg1);
 }
 
+export function ReadClipboardImage() {
+  return window['go']['main']['App']['ReadClipboardImage']();
+}
+
 export function ReadImageFile(arg1) {
   return window['go']['main']['App']['ReadImageFile'](arg1);
 }

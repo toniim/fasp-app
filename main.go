@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -436,6 +437,17 @@ func (a *App) QuickSaveImage(data []byte) (string, error) {
 	return path, nil
 }
 
+// ReadClipboardImage returns the image on the system clipboard as base64 PNG.
+func (a *App) ReadClipboardImage() (string, error) {
+	data, err := a.clipboardService.ReadImage()
+	if err != nil {
+		// clipboard.ErrNoImage reads "no image on the clipboard"; the frontend
+		// shows the message as a toast.
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
+}
+
 // CopyImageToClipboard copies image data to clipboard
 func (a *App) CopyImageToClipboard(data []byte) error {
 	return a.clipboardService.CopyImage(data)
@@ -649,6 +661,9 @@ func main() {
 		OnShutdown:       app.shutdown,
 		OnBeforeClose:    app.onBeforeClose,
 		Menu:             app.buildMenu(),
+		// Dropped files reach the frontend through runtime.OnFileDrop. The
+		// webview's own drop handling stays on, so in-page drags keep working.
+		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true},
 		Mac: &mac.Options{
 			TitleBar: mac.TitleBarDefault(),
 			About: &mac.AboutInfo{
