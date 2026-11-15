@@ -37,10 +37,11 @@ static char *copyError(NSString *what, NSError *err) {
     return copyMessage([NSString stringWithFormat:@"%@: %@", what, err.localizedDescription]);
 }
 
-// fasp_capture_cursor_display captures the display under the cursor as PNG.
-// On success it returns 0 and sets *out (malloc'd, caller frees) and the
-// image size. On failure it returns -1 and sets *errOut (malloc'd).
-int fasp_capture_cursor_display(void **out, int *outLen, int *width, int *height, char **errOut) {
+// fasp_capture_cursor_image captures the display under the cursor at its
+// physical pixel size, without the cursor. On success it returns 0, sets
+// *outImage (+1 retained, caller releases) and *outDisplay. On failure it
+// returns -1 and sets *errOut (malloc'd).
+int fasp_capture_cursor_image(CGImageRef *outImage, CGDirectDisplayID *outDisplay, char **errOut) {
     @autoreleasepool {
         CGDirectDisplayID displayID = cursorDisplayID();
 
@@ -112,35 +113,71 @@ int fasp_capture_cursor_display(void **out, int *outLen, int *width, int *height
             *errOut = copyError(@"failed to capture the screen", captureErr);
             return -1;
         }
-
-        // 3. Encode as PNG in memory.
-        NSMutableData *png = [NSMutableData data];
-        CGImageDestinationRef dest = CGImageDestinationCreateWithData(
-            (__bridge CFMutableDataRef)png, (__bridge CFStringRef)UTTypePNG.identifier, 1, NULL);
-        if (dest == NULL) {
-            CGImageRelease(image);
-            *errOut = copyMessage(@"failed to create PNG encoder");
-            return -1;
-        }
-        CGImageDestinationAddImage(dest, image, NULL);
-        bool ok = CGImageDestinationFinalize(dest);
-        CFRelease(dest);
-        *width = (int)CGImageGetWidth(image);
-        *height = (int)CGImageGetHeight(image);
-        CGImageRelease(image);
-        if (!ok) {
-            *errOut = copyMessage(@"failed to encode PNG");
-            return -1;
-        }
-
-        void *buf = malloc(png.length);
-        if (buf == NULL) {
-            *errOut = copyMessage(@"out of memory");
-            return -1;
-        }
-        memcpy(buf, png.bytes, png.length);
-        *out = buf;
-        *outLen = (int)png.length;
+        *outImage = image;
+        *outDisplay = displayID;
         return 0;
     }
+}
+
+// encodePNG encodes image as PNG into a malloc'd buffer (caller frees),
+// keeping its colour profile. Returns 0, or -1 with *errOut set.
+static int encodePNG(CGImageRef image, void **out, int *outLen, char **errOut) {
+    NSMutableData *png = [NSMutableData data];
+    CGImageDestinationRef dest = CGImageDestinationCreateWithData(
+        (__bridge CFMutableDataRef)png, (__bridge CFStringRef)UTTypePNG.identifier, 1, NULL);
+    if (dest == NULL) {
+        *errOut = copyMessage(@"failed to create PNG encoder");
+        return -1;
+    }
+    CGImageDestinationAddImage(dest, image, NULL);
+    bool ok = CGImageDestinationFinalize(dest);
+    CFRelease(dest);
+    if (!ok) {
+        *errOut = copyMessage(@"failed to encode PNG");
+        return -1;
+    }
+    void *buf = malloc(png.length);
+    if (buf == NULL) {
+        *errOut = copyMessage(@"out of memory");
+        return -1;
+    }
+    memcpy(buf, png.bytes, png.length);
+    *out = buf;
+    *outLen = (int)png.length;
+    return 0;
+}
+
+// fasp_capture_cursor_display captures the display under the cursor as PNG.
+// On success it returns 0 and sets *out (malloc'd, caller frees) and the
+// image size. On failure it returns -1 and sets *errOut (malloc'd).
+int fasp_capture_cursor_display(void **out, int *outLen, int *width, int *height, char **errOut) {
+    @autoreleasepool {
+        CGImageRef image = NULL;
+        CGDirectDisplayID displayID = 0;
+        if (fasp_capture_cursor_image(&image, &displayID, errOut) != 0) {
+            return -1;
+        }
+        *width = (int)CGImageGetWidth(image);
+        *height = (int)CGImageGetHeight(image);
+        int rc = encodePNG(image, out, outLen, errOut);
+        CGImageRelease(image);
+        return rc;
+    }
+}
+
+int fasp_crop_png(CGImageRef image, int x, int y, int w, int h, void **out, int *outLen, char **errOut) {
+    @autoreleasepool {
+        CGImageRef crop = CGImageCreateWithImageInRect(image, CGRectMake(x, y, w, h));
+        if (crop == NULL) {
+            *errOut = copyMessage(@"failed to crop the screenshot");
+            return -1;
+        }
+        int rc = encodePNG(crop, out, outLen, errOut);
+        CGImageRelease(crop);
+        return rc;
+    }
+}
+
+void fasp_release_image(CGImageRef image) {
+    if (image != NULL) CGImageRelease(image);
 }
