@@ -1,0 +1,212 @@
+/* Record dialog, recording bar and "recording saved" panel. The dialogs reuse
+   the settings window styles; this file only adds what is specific. */
+
+.record-dialog,
+.record-done {
+  max-width: 560px;
+}
+
+.record-modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.record-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--space-3);
+  background: var(--color-bg-secondary);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  font-family: var(--font-family);
+  text-align: left;
+  cursor: pointer;
+}
+
+.record-mode:hover {
+  border-color: var(--color-border);
+}
+
+.record-mode.selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-light);
+}
+
+.record-mode-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.record-mode-hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.record-window-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: var(--space-4);
+}
+
+.record-window-list-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.record-link {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.record-window {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 6px 10px;
+  background: var(--color-bg-secondary);
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family);
+  text-align: left;
+  cursor: pointer;
+}
+
+.record-window.selected {
+  border-color: var(--color-accent);
+}
+
+.record-window-title {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-window-app {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.record-error,
+.record-warning {
+  font-size: 13px;
+  margin: var(--space-2) 0 0;
+  text-align: left;
+}
+
+.record-error {
+  color: var(--color-danger);
+}
+
+.record-warning {
+  color: var(--color-warning);
+}
+
+.record-start {
+  min-width: 140px;
+}
+
+.record-done-file {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+}
+
+.record-done-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-done-meta {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* The compact bar that replaces the whole window while recording. */
+.recording-bar {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
+  background: var(--color-bg-dark);
+  color: var(--color-text-inverted);
+  font-family: var(--font-family);
+  user-select: none;
+}
+
+.recording-bar-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-danger);
+  animation: recording-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.recording-bar-time {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.recording-bar-mode {
+  flex: 1;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  text-align: left;
+}
+
+.recording-bar-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--color-danger);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.recording-bar-stop:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.recording-bar-stop-icon {
+  width: 9px;
+  height: 9px;
+  background: white;
+  border-radius: 2px;
+}

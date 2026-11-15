@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { GetSettings, UpdateSetting, PauseHotkeys, ResumeHotkeys, TestUploadConnection } from '../../../wailsjs/go/main/App';
+import { GetSettings, UpdateSetting, TestUploadConnection, ListMicrophones } from '../../../wailsjs/go/main/App';
+import ShortcutField from './ShortcutField';
 import { Settings } from '../../types';
 import './SettingsWindow.css';
 
@@ -11,10 +12,9 @@ interface SettingsWindowProps {
 
 const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [captureShortcut, setCaptureShortcut] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
+  const [hotkeys, setHotkeys] = useState<Record<string, string>>({});
+  const [mics, setMics] = useState<{ id: string; name: string }[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const [showKeyPicker, setShowKeyPicker] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
   const [connectionMessage, setConnectionMessage] = useState('');
 
@@ -25,119 +25,53 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   // Handle Escape key to close settings
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isRecording) {
+      // Esc while a shortcut field is listening belongs to that field.
+      if (e.key === 'Escape' && !document.querySelector('.shortcut-input.recording')) {
         onClose();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isRecording, onClose]);
+  }, [onClose]);
 
   const loadSettings = async () => {
     try {
       const data = await GetSettings();
       setSettings(data as any);
-      setCaptureShortcut(data.hotkeys?.capture_fullscreen || data.hotkeys?.capture || 'Cmd+Shift+5');
+      setHotkeys({
+        capture_fullscreen: data.hotkeys?.capture_fullscreen || data.hotkeys?.capture || '',
+        capture_zone: data.hotkeys?.capture_zone || '',
+        record: data.hotkeys?.record || '',
+      });
+      ListMicrophones().then((list) => setMics(list || [])).catch(() => setMics([]));
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!isRecording) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    const keys: string[] = [];
-
-    if (e.metaKey) keys.push('Cmd');
-    if (e.ctrlKey) keys.push('Ctrl');
-    if (e.altKey) keys.push('Alt');
-    if (e.shiftKey) keys.push('Shift');
-
-    // Special keys that can be used alone (without modifiers)
-    // Function keys + navigation keys
-    const specialKeys = [
-      'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
-      'F13', 'F14', 'F15', 'F16', 'F17', 'F18', 'F19', 'F20',
-      'Help', 'Home', 'End', 'PageUp', 'PageDown', 'Delete'
-    ];
-
-    // Add the main key (not modifier keys)
-    let hasMainKey = false;
-    if (!['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) {
-      // Normalize key name
-      let keyName = e.key;
-
-      // Handle special cases
-      if (keyName === 'Print') keyName = 'PrintScreen';
-
-      keys.push(keyName);
-      hasMainKey = true;
-    }
-
-    // While only modifiers are held (e.g. Ctrl+Shift), keep recording so the
-    // user can still press the actual key (e.g. Ctrl+Shift+D). Do NOT commit yet.
-    if (!hasMainKey) return;
-
-    // Accept if:
-    // 1. Has at least one modifier + main key (keys.length > 1)
-    // 2. OR is a special key that can be used alone
-    const mainKey = keys[keys.length - 1];
-    const isSpecialKey = specialKeys.includes(mainKey);
-
-    if (keys.length > 1 || isSpecialKey) {
-      setCaptureShortcut(keys.join('+'));
-      stopRecording();
-    }
-  };
-
-  const startRecording = async () => {
-    setIsRecording(true);
-    try {
-      await PauseHotkeys();
-      console.log('Hotkeys paused for recording');
-    } catch (error) {
-      console.error('Failed to pause hotkeys:', error);
-    }
-  };
-
-  const stopRecording = async () => {
-    setIsRecording(false);
-    try {
-      await ResumeHotkeys();
-      console.log('Hotkeys resumed after recording');
-    } catch (error) {
-      console.error('Failed to resume hotkeys:', error);
-    }
-  };
-
-  const handleSpecialKeySelect = (key: string) => {
-    setCaptureShortcut(key);
-    setShowKeyPicker(false);
-  };
-
-  // Special keys that browsers can't capture (like PrintScreen)
-  const specialKeyOptions = [
-    { value: 'PrintScreen', keys: ['PrtSc'], category: 'Single Key' },
-    { value: 'Ctrl+PrintScreen', keys: ['Ctrl', 'PrtSc'], category: 'With Modifier' },
-    { value: 'Alt+PrintScreen', keys: ['Alt', 'PrtSc'], category: 'With Modifier' },
-    { value: 'Shift+PrintScreen', keys: ['Shift', 'PrtSc'], category: 'With Modifier' },
-    { value: 'Ctrl+Shift+S', keys: ['Ctrl', 'Shift', 'S'], category: 'Common' },
-    { value: 'Ctrl+Shift+4', keys: ['Ctrl', 'Shift', '4'], category: 'Common' },
-    { value: 'F13', keys: ['F13'], category: 'Function Keys' },
-    { value: 'F14', keys: ['F14'], category: 'Function Keys' },
-    { value: 'F15', keys: ['F15'], category: 'Function Keys' },
-  ];
-
   const handleSave = async () => {
     if (!settings) return;
 
+    // One combination can only trigger one action: the second registration
+    // would silently fail.
+    const combos = Object.values(hotkeys).filter(Boolean);
+    const used = combos.map((k) => k.toLowerCase());
+    const duplicate = combos.find((_, i) => used.indexOf(used[i]) !== i);
+    if (duplicate) {
+      alert(`The shortcut ${duplicate} is assigned to more than one action. Pick a different one.`);
+      return;
+    }
+
     setIsSaving(true);
     try {
-      await UpdateSetting('hotkeys.capture_fullscreen', captureShortcut);
+      for (const key of ['capture_fullscreen', 'capture_zone', 'record']) {
+        await UpdateSetting(`hotkeys.${key}`, hotkeys[key] || '');
+      }
+      await UpdateSetting('record_system_audio', settings.record_system_audio ?? true);
+      await UpdateSetting('record_microphone', settings.record_microphone ?? false);
+      await UpdateSetting('record_mic_device', settings.record_mic_device || '');
+      await UpdateSetting('record_fps', settings.record_fps || 30);
 
       // Update other settings if needed
       if (settings.default_save_path) {
@@ -213,77 +147,85 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
           <div className="settings-table">
             <div className="setting-row">
               <label className="setting-label">Capture Screenshot</label>
-              <div className="setting-input">
-                <div className="shortcut-input-group">
-                  <div className="shortcut-input-wrapper">
-                    <input
-                      type="text"
-                      className={`shortcut-input ${isRecording ? 'recording' : ''}`}
-                      value={captureShortcut}
-                      readOnly
-                      placeholder="Click to record..."
-                      onClick={startRecording}
-                      onKeyDown={handleKeyDown}
-                      onBlur={() => {
-                        if (!showKeyPicker) stopRecording();
-                      }}
-                    />
-                    {isRecording && (
-                      <span className="recording-indicator">
-                        <span className="recording-dot"></span>
-                        Listening...
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className={`btn-keyboard ${showKeyPicker ? 'active' : ''}`}
-                    onClick={() => setShowKeyPicker(!showKeyPicker)}
-                    title="Choose from presets"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="2" y="4" width="20" height="16" rx="2" />
-                      <line x1="6" y1="8" x2="6" y2="8" />
-                      <line x1="10" y1="8" x2="10" y2="8" />
-                      <line x1="14" y1="8" x2="14" y2="8" />
-                      <line x1="18" y1="8" x2="18" y2="8" />
-                      <line x1="6" y1="12" x2="6" y2="12" />
-                      <line x1="10" y1="12" x2="10" y2="12" />
-                      <line x1="14" y1="12" x2="14" y2="12" />
-                      <line x1="18" y1="12" x2="18" y2="12" />
-                      <line x1="8" y1="16" x2="16" y2="16" />
-                    </svg>
-                  </button>
-                </div>
+              <ShortcutField
+                value={hotkeys.capture_fullscreen || ''}
+                onChange={(v) => setHotkeys({ ...hotkeys, capture_fullscreen: v })}
+              />
+            </div>
+            <div className="setting-row">
+              <label className="setting-label">Capture Zone</label>
+              <ShortcutField
+                value={hotkeys.capture_zone || ''}
+                onChange={(v) => setHotkeys({ ...hotkeys, capture_zone: v })}
+              />
+            </div>
+            <div className="setting-row">
+              <label className="setting-label">Start / Stop Recording</label>
+              <ShortcutField
+                value={hotkeys.record || ''}
+                onChange={(v) => setHotkeys({ ...hotkeys, record: v })}
+              />
+            </div>
+            <p className="setting-hint">
+              Capture Zone freezes the screen so you can drag the area to keep. Click an input to record a
+              shortcut, or the keyboard icon for presets.
+            </p>
+          </div>
+        </div>
 
-                {showKeyPicker && (
-                  <div className="key-picker">
-                    <div className="key-picker-header">
-                      <span className="key-picker-title">Choose a shortcut</span>
-                      <span className="key-picker-subtitle">PrintScreen cannot be recorded in browser</span>
-                    </div>
-                    <div className="key-picker-grid">
-                      {specialKeyOptions.map(opt => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          className={`key-combo ${captureShortcut === opt.value ? 'selected' : ''}`}
-                          onClick={() => handleSpecialKeySelect(opt.value)}
-                        >
-                          <div className="key-combo-keys">
-                            {opt.keys.map((key, idx) => (
-                              <span key={idx}>
-                                <kbd className="key-cap">{key}</kbd>
-                                {idx < opt.keys.length - 1 && <span className="key-plus">+</span>}
-                              </span>
-                            ))}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <p className="setting-hint">Click input to record, or click keyboard icon for presets</p>
+        <div className="settings-section">
+          <h3>Recording</h3>
+
+          <div className="settings-table">
+            <div className="setting-row">
+              <label className="setting-label">Audio</label>
+              <div className="setting-input-checkbox">
+                <input
+                  type="checkbox"
+                  id="record-system-audio"
+                  checked={settings.record_system_audio ?? true}
+                  onChange={(e) => setSettings({ ...settings, record_system_audio: e.target.checked })}
+                />
+                <label htmlFor="record-system-audio" className="checkbox-label">
+                  Computer sound
+                </label>
+                <input
+                  type="checkbox"
+                  id="record-microphone"
+                  checked={settings.record_microphone ?? false}
+                  onChange={(e) => setSettings({ ...settings, record_microphone: e.target.checked })}
+                />
+                <label htmlFor="record-microphone" className="checkbox-label">
+                  Microphone
+                </label>
+              </div>
+            </div>
+            <div className="setting-row">
+              <label className="setting-label">Microphone</label>
+              <div className="setting-input">
+                <select
+                  value={settings.record_mic_device || ''}
+                  onChange={(e) => setSettings({ ...settings, record_mic_device: e.target.value })}
+                >
+                  <option value="">System default</option>
+                  {mics.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="setting-row">
+              <label className="setting-label">Frame Rate</label>
+              <div className="setting-input">
+                <select
+                  value={settings.record_fps || 30}
+                  onChange={(e) => setSettings({ ...settings, record_fps: Number(e.target.value) })}
+                >
+                  <option value={15}>15 fps</option>
+                  <option value={30}>30 fps</option>
+                  <option value={60}>60 fps</option>
+                </select>
+                <p className="setting-hint">Defaults for new recordings; you can change them each time you start one.</p>
               </div>
             </div>
           </div>

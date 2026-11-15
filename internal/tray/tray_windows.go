@@ -64,6 +64,8 @@ func (m *windowsManager) onReady() {
 
 	// Create menu items
 	mCapture := systray.AddMenuItem("Capture Screenshot", "Take a screenshot")
+	mCaptureZone := systray.AddMenuItem("Capture Zone", "Freeze the screen and drag the area to capture")
+	mRecord := systray.AddMenuItem("Record Screen / Stop Recording", "Start a screen recording, or stop the running one")
 	mOpenImage := systray.AddMenuItem("Open Image...", "Open an image for annotation")
 	systray.AddSeparator()
 
@@ -118,6 +120,10 @@ func (m *windowsManager) onReady() {
 			select {
 			case <-mCapture.ClickedCh:
 				m.emit(ActionCapture, "")
+			case <-mCaptureZone.ClickedCh:
+				m.emit(ActionCaptureZone, "")
+			case <-mRecord.ClickedCh:
+				m.emit(ActionRecord, "")
 			case <-mOpenImage.ClickedCh:
 				m.emit(ActionOpenImage, "")
 			case <-mOpenFolder.ClickedCh:

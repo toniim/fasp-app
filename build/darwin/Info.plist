@@ -59,5 +59,7 @@
           {{end}}
         </array>
         {{end}}
+        <key>NSMicrophoneUsageDescription</key>
+        <string>Fasp records your microphone when you include it in a screen recording.</string>
     </dict>
 </plist>

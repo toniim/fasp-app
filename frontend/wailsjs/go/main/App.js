@@ -10,6 +10,10 @@ export function CaptureFullscreen() {
   return window['go']['main']['App']['CaptureFullscreen']();
 }
 
+export function CaptureZone() {
+  return window['go']['main']['App']['CaptureZone']();
+}
+
 export function CheckAccessibilityPermission() {
   return window['go']['main']['App']['CheckAccessibilityPermission']();
 }
@@ -42,12 +46,28 @@ export function HideWindow() {
   return window['go']['main']['App']['HideWindow']();
 }
 
+export function IsRecording() {
+  return window['go']['main']['App']['IsRecording']();
+}
+
 export function IsUploadConfigured() {
   return window['go']['main']['App']['IsUploadConfigured']();
 }
 
+export function ListMicrophones() {
+  return window['go']['main']['App']['ListMicrophones']();
+}
+
+export function ListWindows() {
+  return window['go']['main']['App']['ListWindows']();
+}
+
 export function OpenImageDialog() {
   return window['go']['main']['App']['OpenImageDialog']();
+}
+
+export function OpenPath(arg1) {
+  return window['go']['main']['App']['OpenPath'](arg1);
 }
 
 export function OpenSaveDialog(arg1) {
@@ -78,12 +98,28 @@ export function ResumeHotkeys() {
   return window['go']['main']['App']['ResumeHotkeys']();
 }
 
+export function RevealPath(arg1) {
+  return window['go']['main']['App']['RevealPath'](arg1);
+}
+
 export function SaveImage(arg1, arg2) {
   return window['go']['main']['App']['SaveImage'](arg1, arg2);
 }
 
+export function SelectRecordingRegion() {
+  return window['go']['main']['App']['SelectRecordingRegion']();
+}
+
 export function ShowWindow() {
   return window['go']['main']['App']['ShowWindow']();
+}
+
+export function StartRecording(arg1) {
+  return window['go']['main']['App']['StartRecording'](arg1);
+}
+
+export function StopRecording() {
+  return window['go']['main']['App']['StopRecording']();
 }
 
 export function TestUploadConnection() {

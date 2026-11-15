@@ -20,6 +20,10 @@ const (
 	ActionOpenRecent
 	// ActionOpenRecentsFolder opens the folder holding recent saves (arg = folder)
 	ActionOpenRecentsFolder
+	// ActionCaptureZone freezes the screen to capture a dragged zone
+	ActionCaptureZone
+	// ActionRecord opens the record dialog, or stops the running recording
+	ActionRecord
 )
 
 // Callback is the function type for tray action callbacks. arg carries the

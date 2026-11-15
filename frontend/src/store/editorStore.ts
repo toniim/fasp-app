@@ -3,7 +3,7 @@ import { Annotation, AnnotationTool, EditorState, CropRegion } from '../types';
 import { fitScale, scaleAnnotation } from '../utils/editor-geometry';
 
 interface EditorStore extends EditorState {
-  setImage: (image: string) => void;
+  setImage: (image: string, tool?: AnnotationTool) => void;
   setSelectedTool: (tool: AnnotationTool) => void;
   setSelectedColor: (color: string) => void;
   setSelectedSize: (size: number) => void;
@@ -37,7 +37,9 @@ const initialState: EditorState = {
 export const useEditorStore = create<EditorStore>((set, get) => ({
   ...initialState,
 
-  setImage: (image: string) => {
+  // tool is the tool selected for the new image: crop after a full-screen
+  // capture, select after a zone capture (the zone is already the crop).
+  setImage: (image: string, tool: AnnotationTool = 'crop') => {
     const { imageHistory, imageHistoryStep } = get();
     // Add to image history
     const newHistory = imageHistory.slice(0, imageHistoryStep + 1);
@@ -46,7 +48,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       image,
       annotations: [],
       selectedAnnotationId: null,
-      selectedTool: 'crop', // Default to crop tool after screenshot
+      selectedTool: tool,
       cropRegion: null,
       history: [[]],
       historyStep: 0,

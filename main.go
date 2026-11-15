@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/heytonyne/fasp/internal/model"
@@ -57,6 +58,11 @@ type App struct {
 	recentsService    recents.Service
 	trayManager       tray.Manager
 	quitting          bool
+
+	recording recordingState
+	// recordingBar is set while the window is the small recording control
+	// bar, so its size is not saved as the editor size.
+	recordingBar atomic.Bool
 }
 
 // NewApp creates a new App application struct
@@ -99,6 +105,12 @@ func (a *App) setupTray() {
 		case tray.ActionCapture:
 			// Trigger screenshot capture
 			runtime.EventsEmit(a.ctx, "hotkey:capture")
+
+		case tray.ActionCaptureZone:
+			runtime.EventsEmit(a.ctx, "hotkey:capture_zone")
+
+		case tray.ActionRecord:
+			a.toggleRecording()
 
 		case tray.ActionOpenImage:
 			// Trigger open image dialog
@@ -214,6 +226,12 @@ func (a *App) buildMenu() *menu.Menu {
 	fileMenu.AddText("Capture Screenshot", nil, func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "hotkey:capture")
 	})
+	fileMenu.AddText("Capture Zone", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "hotkey:capture_zone")
+	})
+	fileMenu.AddText("Record Screen...", nil, func(_ *menu.CallbackData) {
+		a.toggleRecording()
+	})
 	fileMenu.AddText("Open Image...", keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "open:image")
 	})
@@ -253,7 +271,7 @@ func (a *App) setupHotkeys() {
 	// Register every configured capture hotkey BEFORE starting the listener.
 	// capture_region used to be ignored here, so the setting did nothing.
 	registered := 0
-	registerHotkey := func(settingKey, eventName string) {
+	registerAction := func(settingKey string, action func()) {
 		combo, ok := settings.Hotkeys[settingKey]
 		if !ok || combo == "" {
 			return
@@ -262,7 +280,7 @@ func (a *App) setupHotkeys() {
 		println("Setting up hotkey:", settingKey, "=", combo)
 		if err := a.hotkeyService.Register(combo, func() {
 			println("🔥 Hotkey pressed:", settingKey)
-			runtime.EventsEmit(a.ctx, eventName)
+			action()
 		}); err != nil {
 			println("Failed to register hotkey", settingKey, ":", err.Error())
 			return
@@ -270,8 +288,13 @@ func (a *App) setupHotkeys() {
 		registered++
 	}
 
+	registerHotkey := func(settingKey, eventName string) {
+		registerAction(settingKey, func() { runtime.EventsEmit(a.ctx, eventName) })
+	}
 	registerHotkey("capture_fullscreen", "hotkey:capture")
 	registerHotkey("capture_region", "hotkey:capture_region")
+	registerHotkey("capture_zone", "hotkey:capture_zone")
+	registerAction("record", a.toggleRecording)
 
 	if registered == 0 {
 		println("No capture hotkey configured")
@@ -512,6 +535,9 @@ func (a *App) TestUploadConnection() error {
 
 // applyWindowState restores the saved maximized/normal editor window state.
 func (a *App) applyWindowState() {
+	if a.recordingBar.Load() {
+		return // the window is the recording bar; keep its size
+	}
 	s, err := a.settingsService.GetAll()
 	if err != nil {
 		return
@@ -529,7 +555,7 @@ func (a *App) applyWindowState() {
 
 // saveWindowState persists the current editor window size and maximized state.
 func (a *App) saveWindowState() {
-	if a.ctx == nil {
+	if a.ctx == nil || a.recordingBar.Load() {
 		return
 	}
 	maxed := runtime.WindowIsMaximised(a.ctx)
@@ -545,6 +571,11 @@ func (a *App) saveWindowState() {
 
 // ShowWindow shows the editor window, restoring its last maximized/normal state.
 func (a *App) ShowWindow() {
+	if a.recordingBar.Load() {
+		// Keep the recording bar's size and position.
+		runtime.WindowShow(a.ctx)
+		return
+	}
 	runtime.WindowShow(a.ctx)
 	runtime.WindowUnminimise(a.ctx)
 	a.applyWindowState()
