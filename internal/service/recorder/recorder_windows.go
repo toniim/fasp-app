@@ -140,10 +140,6 @@ type pipeline struct {
 	audio  []*wasapiCapture
 }
 
-// audioLatency is how long the mixer waits for late audio packets before it
-// mixes a span; WASAPI delivers every ~10 ms, so 100 ms is generous.
-const audioLatency = audioRate / 10
-
 func (p *pipeline) stopAudio() {
 	for _, c := range p.audio {
 		c.close()

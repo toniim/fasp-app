@@ -25,6 +25,9 @@ const (
 	// A jump longer than this is the source going quiet (loopback sends no
 	// packets while nothing plays), not clock drift.
 	silenceGap = audioRate / 10
+	// audioLatency is how long the mixer waits for late audio packets before
+	// it mixes a span; devices deliver every ~10-20 ms, so 100 ms is generous.
+	audioLatency = audioRate / 10
 )
 
 // AudioStats describe one audio source of a finished recording.

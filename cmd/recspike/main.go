@@ -77,7 +77,10 @@ func main() {
 	rec, err := recorder.Start(opts)
 	check(err)
 	fmt.Printf("recording %s for %s...\n", opts.Mode, *dur)
-	time.Sleep(*dur)
+	select {
+	case <-time.After(*dur):
+	case <-rec.Done(): // the recorded window closed
+	}
 	st, err := rec.Stop()
 	check(err)
 	cpu := cpuTime() - cpu0
@@ -89,7 +92,7 @@ func main() {
 	}
 	fmt.Printf("pipeline   %s\n", st.Pipeline)
 	fmt.Printf("size       %dx%d @ %d fps\n", st.Width, st.Height, opts.FPS)
-	fmt.Printf("duration   %s\n", st.Duration.Round(time.Millisecond))
+	fmt.Printf("duration   %s (%s)\n", st.Duration.Round(time.Millisecond), st.EndReason)
 	fmt.Printf("frames     %d written, %d captured, %d dropped\n", st.Frames, st.Captured, st.Dropped)
 	fmt.Printf("file       %s (%.2f MB, %.2f Mbit/s)\n", *out, float64(size)/1e6, float64(size*8)/1e6/st.Duration.Seconds())
 	for _, a := range st.Audio {
