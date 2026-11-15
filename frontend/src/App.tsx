@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 import { CaptureActiveDisplay, OpenImageDialog, ReadImageFile, ShowWindow } from '../wailsjs/go/main/App';
-import { useEditorStore } from './store/editorStore';
+import { useEditorStore, selectHasContent } from './store/editorStore';
 import EditorWindow from './components/EditorWindow/EditorWindow';
 import SettingsWindow from './components/SettingsWindow/SettingsWindow';
 import PermissionWarning from './components/PermissionWarning/PermissionWarning';
@@ -37,7 +37,8 @@ const Icons = {
 };
 
 function App() {
-  const { image, setImage } = useEditorStore();
+  const setImage = useEditorStore((state) => state.setImage);
+  const hasImage = useEditorStore(selectHasContent);
   const [isCapturing, setIsCapturing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -85,7 +86,7 @@ function App() {
       // Show window with the captured image
       ShowWindow();
 
-      setImage(result.data);
+      await setImage(result.data);
     } catch (error) {
       console.error('Failed to capture screenshot:', error);
 
@@ -115,7 +116,7 @@ function App() {
       ShowWindow();
 
       // Set image in editor
-      setImage(imageData);
+      await setImage(imageData);
     } catch (error) {
       console.error('Failed to open image:', error);
       setToast({ message: `Failed to open image: ${error}`, type: 'error' });
@@ -126,7 +127,7 @@ function App() {
     <div id="App">
       <PermissionWarning />
 
-      {image ? (
+      {hasImage ? (
         <EditorWindow />
       ) : (
         <div className="welcome-screen">

@@ -1,17 +1,74 @@
-import { Annotation } from '../types';
-
 // Space the editor chrome takes around the stage (toolbar, action bar, padding).
 const STAGE_MARGIN_X = 40;
 const STAGE_MARGIN_Y = 140;
 
-// fitScale returns the factor that fits an image of the given size into the
-// editor window without upscaling it. Annotations are stored in stage
-// coordinates (image pixels * this factor), so every place that changes the
-// image size must use this same function to keep them aligned.
+// fitScale returns the factor that fits a document area (the frame) of the
+// given size into the editor window without upscaling it. It is a view scale
+// only: the stage scale is zoom * fitScale and the document stays in document
+// pixels, so changing it never touches images or annotations.
 export function fitScale(imageWidth: number, imageHeight: number): number {
   const maxWidth = window.innerWidth - STAGE_MARGIN_X;
   const maxHeight = window.innerHeight - STAGE_MARGIN_Y;
   return Math.min(maxWidth / imageWidth, maxHeight / imageHeight, 1);
+}
+
+// Gap between a new image and the existing content, in doc px.
+export const IMAGE_GAP = 24;
+// Space around the images inside the frame once there are two or more.
+export const MULTI_IMAGE_PADDING = 32;
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function framePadding(imageCount: number): number {
+  return imageCount >= 2 ? MULTI_IMAGE_PADDING : 0;
+}
+
+// Bounding box of boxes, or null when there are none.
+export function boundsOf(boxes: Box[]): Box | null {
+  if (boxes.length === 0) return null;
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const b of boxes) {
+    left = Math.min(left, b.x);
+    top = Math.min(top, b.y);
+    right = Math.max(right, b.x + b.width);
+    bottom = Math.max(bottom, b.y + b.height);
+  }
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+// Grows a box outward by pad on every side and snaps it to whole doc px.
+function inflateToIntegers(box: Box, pad: number): Box {
+  const left = Math.floor(box.x - pad);
+  const top = Math.floor(box.y - pad);
+  const right = Math.ceil(box.x + box.width + pad);
+  const bottom = Math.ceil(box.y + box.height + pad);
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+// Auto frame: the images' bounding box plus padding.
+export function autoFrame(images: Box[]): Box {
+  const bounds = boundsOf(images);
+  if (!bounds) return { x: 0, y: 0, width: 0, height: 0 };
+  return inflateToIntegers(bounds, framePadding(images.length));
+}
+
+// Manual frame after an image was added: keep the frame and grow it to hold
+// the new image plus padding. imageCount is the count after the add.
+export function growFrame(frame: Box, added: Box, imageCount: number): Box {
+  const need = inflateToIntegers(added, framePadding(imageCount));
+  const left = Math.min(frame.x, need.x);
+  const top = Math.min(frame.y, need.y);
+  const right = Math.max(frame.x + frame.width, need.x + need.width);
+  const bottom = Math.max(frame.y + frame.height, need.y + need.height);
+  return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
 export interface Size {
@@ -91,15 +148,17 @@ export function clampPosition(pos: Position, content: Size, viewport: Size): Pos
   };
 }
 
-// scaleAnnotation returns a copy of the annotation with every stage-space
-// length multiplied by factor.
-export function scaleAnnotation(ann: Annotation, factor: number): Annotation {
-  if (factor === 1) return ann;
-  const scaled: Annotation = { ...ann, x: ann.x * factor, y: ann.y * factor };
-  if (ann.width !== undefined) scaled.width = ann.width * factor;
-  if (ann.height !== undefined) scaled.height = ann.height * factor;
-  if (ann.strokeWidth !== undefined) scaled.strokeWidth = ann.strokeWidth * factor;
-  if (ann.fontSize !== undefined) scaled.fontSize = ann.fontSize * factor;
-  if (ann.points) scaled.points = ann.points.map((p) => p * factor);
-  return scaled;
+// keepInView is clampPosition without the centering: content smaller than the
+// viewport stays where it is as long as it is fully visible, and is pushed back
+// inside otherwise. Used when an image edit grows the frame, so the view does
+// not move under the pointer.
+export function keepInView(pos: Position, content: Size, viewport: Size): Position {
+  const axis = (view: number, size: number, value: number) => snapToDevicePixel(
+    size <= view ? Math.min(view - size, Math.max(0, value)) : Math.min(0, Math.max(view - size, value)),
+  );
+
+  return {
+    x: axis(viewport.width, content.width, pos.x),
+    y: axis(viewport.height, content.height, pos.y),
+  };
 }
