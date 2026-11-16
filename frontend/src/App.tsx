@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './App.css';
-import { CaptureActiveDisplay, OpenImageDialog, ReadImageFile, ShowWindow } from '../wailsjs/go/main/App';
+import { CaptureActiveDisplay, CaptureZone, IsRecording, OpenImageDialog, ReadImageFile, ShowWindow } from '../wailsjs/go/main/App';
 import { useEditorStore, selectHasContent } from './store/editorStore';
 import EditorWindow from './components/EditorWindow/EditorWindow';
 import SettingsWindow from './components/SettingsWindow/SettingsWindow';
 import PermissionWarning from './components/PermissionWarning/PermissionWarning';
 import Toast from './components/Toast/Toast';
+import RecordDialog from './components/Recording/RecordDialog';
+import RecordingBar from './components/Recording/RecordingBar';
+import RecordingDone, { RecordingResult } from './components/Recording/RecordingDone';
+import VideoViewer, { VideoInfo } from './components/VideoViewer/VideoViewer';
 import { EventsOn, WindowHide } from '../wailsjs/runtime/runtime';
 
 interface ToastState {
@@ -15,6 +19,18 @@ interface ToastState {
 
 // SVG Icons - Clean, macOS-style
 const Icons = {
+  zone: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4"/>
+      <rect x="8" y="8" width="8" height="8" rx="1"/>
+    </svg>
+  ),
+  record: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9"/>
+      <circle cx="12" cy="12" r="4" fill="currentColor"/>
+    </svg>
+  ),
   camera: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
@@ -42,6 +58,18 @@ function App() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [showRecordDialog, setShowRecordDialog] = useState(false);
+  const [recording, setRecording] = useState<{ mode: string; started_at: number } | null>(null);
+  const [recordingDone, setRecordingDone] = useState<RecordingResult | null>(null);
+  // A video shown in the in-app player; it takes the editor's place.
+  const [video, setVideo] = useState<VideoInfo | null>(null);
+  // Event handlers are registered once, so they read the recording state
+  // through a ref. While recording, the window is the control bar: captures
+  // would hide it and bring it back at editor size.
+  const recordingRef = useRef(false);
+  useEffect(() => {
+    recordingRef.current = recording !== null;
+  }, [recording]);
 
   // Listen for hotkey events
   useEffect(() => {
@@ -64,7 +92,47 @@ function App() {
       handleOpenImage();
     });
 
+    const unsubscribeZone = EventsOn('hotkey:capture_zone', () => {
+      handleCaptureZone();
+    });
+
+    const unsubscribeOpenRecord = EventsOn('open:record', () => {
+      setRecordingDone(null);
+      setShowRecordDialog(true);
+    });
+
+    const unsubscribeRecStarted = EventsOn('recording:started', (status) => {
+      setShowRecordDialog(false);
+      setRecordingDone(null);
+      setRecording(status);
+    });
+
+    const unsubscribeRecFinished = EventsOn('recording:finished', (result: RecordingResult) => {
+      setRecording(null);
+      if (result.url) {
+        // Play it right away in the editor, like a fresh screenshot.
+        setVideo({ path: result.path, url: result.url, size_bytes: result.size_bytes, warnings: result.warnings });
+      } else {
+        setRecordingDone(result); // nothing was saved: explain why
+      }
+    });
+
+    const unsubscribeOpenVideo = EventsOn('open:video', (v: VideoInfo) => {
+      setRecordingDone(null);
+      setVideo(v);
+    });
+
+    // A reload during a recording (e.g. dev hot reload) must keep the bar.
+    IsRecording().then((on) => {
+      if (on) setRecording((r) => r || { mode: '', started_at: Date.now() });
+    });
+
     return () => {
+      if (unsubscribeZone) unsubscribeZone();
+      if (unsubscribeOpenRecord) unsubscribeOpenRecord();
+      if (unsubscribeRecStarted) unsubscribeRecStarted();
+      if (unsubscribeRecFinished) unsubscribeRecFinished();
+      if (unsubscribeOpenVideo) unsubscribeOpenVideo();
       if (unsubscribeCapture) unsubscribeCapture();
       if (unsubscribeRegion) unsubscribeRegion();
       if (unsubscribeSettings) unsubscribeSettings();
@@ -73,6 +141,7 @@ function App() {
   }, []);
 
   const handleCapture = async () => {
+    if (recordingRef.current) return;
     try {
       setIsCapturing(true);
 
@@ -86,6 +155,7 @@ function App() {
       // Show window with the captured image
       ShowWindow();
 
+      setVideo(null);
       await setImage(result.data);
     } catch (error) {
       console.error('Failed to capture screenshot:', error);
@@ -94,6 +164,33 @@ function App() {
       ShowWindow();
 
       setToast({ message: `Failed to capture screenshot: ${error}`, type: 'error' });
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
+  // Freeze the screen, let the user drag a zone, and open only that zone.
+  const handleCaptureZone = async () => {
+    if (recordingRef.current) return;
+    const hadImage = selectHasContent(useEditorStore.getState());
+    try {
+      setIsCapturing(true);
+      WindowHide();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const result = await CaptureZone();
+      if (!result) {
+        // Esc: go back to where the user was.
+        if (hadImage) ShowWindow();
+        return;
+      }
+      ShowWindow();
+      setVideo(null);
+      await setImage(result.data, 'select');
+    } catch (error) {
+      console.error('Failed to capture zone:', error);
+      ShowWindow();
+      setToast({ message: `Failed to capture zone: ${error}`, type: 'error' });
     } finally {
       setIsCapturing(false);
     }
@@ -116,6 +213,7 @@ function App() {
       ShowWindow();
 
       // Set image in editor
+      setVideo(null);
       await setImage(imageData);
     } catch (error) {
       console.error('Failed to open image:', error);
@@ -123,11 +221,17 @@ function App() {
     }
   };
 
+  if (recording) {
+    return <RecordingBar startedAt={recording.started_at} mode={recording.mode} />;
+  }
+
   return (
     <div id="App">
       <PermissionWarning />
 
-      {hasImage ? (
+      {video ? (
+        <VideoViewer video={video} onClose={() => setVideo(null)} />
+      ) : hasImage ? (
         <EditorWindow />
       ) : (
         <div className="welcome-screen">
@@ -136,6 +240,14 @@ function App() {
           <button className="capture-button" onClick={handleCapture} disabled={isCapturing}>
             {Icons.camera}
             <span>{isCapturing ? 'Capturing...' : 'Capture Screenshot'}</span>
+          </button>
+          <button className="capture-button" onClick={handleCaptureZone} disabled={isCapturing}>
+            {Icons.zone}
+            <span>Capture Zone</span>
+          </button>
+          <button className="capture-button" onClick={() => setShowRecordDialog(true)}>
+            {Icons.record}
+            <span>Record Screen</span>
           </button>
           <button className="capture-button" onClick={handleOpenImage}>
             {Icons.image}
@@ -149,6 +261,8 @@ function App() {
       )}
 
       {showSettings && <SettingsWindow onClose={() => setShowSettings(false)} />}
+      {showRecordDialog && <RecordDialog onClose={() => setShowRecordDialog(false)} />}
+      {recordingDone && <RecordingDone result={recordingDone} onClose={() => setRecordingDone(null)} />}
 
       {toast && (
         <Toast

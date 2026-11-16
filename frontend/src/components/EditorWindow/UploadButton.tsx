@@ -5,9 +5,17 @@ import { GetSettings } from '../../../wailsjs/go/main/App';
 import { ClipboardSetText } from '../../../wailsjs/runtime/runtime';
 import { AfterUploadAction } from '../../types';
 
+export interface UploadFile {
+  blob: Blob;
+  filename: string;
+  contentType: string;
+}
+
 interface UploadButtonProps {
   // Lazily produces the PNG data URL (image + latest annotations) at click time.
-  getImageData: () => string;
+  getImageData?: () => string;
+  // Or any file, e.g. a recording; takes precedence over getImageData.
+  getFile?: () => Promise<UploadFile>;
   hasImage: boolean;
   onComplete?: (publicUrl: string, directUrl: string) => void;
   onError?: (error: string) => void;
@@ -15,6 +23,7 @@ interface UploadButtonProps {
 
 export const UploadButton: React.FC<UploadButtonProps> = ({
   getImageData,
+  getFile,
   hasImage,
   onComplete,
   onError,
@@ -59,7 +68,8 @@ export const UploadButton: React.FC<UploadButtonProps> = ({
         await ClipboardSetText(publicUrl);
         break;
       case 'image':
-        await ClipboardSetText(`![](${directUrl})`);
+        // Markdown image syntax only makes sense for images.
+        await ClipboardSetText(getFile ? directUrl : `![](${directUrl})`);
         break;
       case 'none':
       default:
@@ -68,6 +78,17 @@ export const UploadButton: React.FC<UploadButtonProps> = ({
   };
 
   const handleUpload = async () => {
+    if (getFile) {
+      try {
+        const f = await getFile();
+        await upload(f.blob, f.filename, f.contentType);
+      } catch (err) {
+        console.error('Upload error:', err);
+        onError?.(err instanceof Error ? err.message : 'Upload failed');
+      }
+      return;
+    }
+    if (!getImageData) return;
     // Export now so the upload includes any annotations added since load.
     const imageData = getImageData();
     if (!imageData) {

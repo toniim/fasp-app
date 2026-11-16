@@ -10,6 +10,15 @@ package clipboard
 #include <stdlib.h>
 #include <string.h>
 
+static int fasp_copy_file(const char *path) {
+    @autoreleasepool {
+        NSURL *url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:path]];
+        NSPasteboard *pb = [NSPasteboard generalPasteboard];
+        [pb clearContents];
+        return [pb writeObjects:@[url]] ? 1 : 0;
+    }
+}
+
 static int fasp_copy_png(const void *bytes, int length) {
     @autoreleasepool {
         NSData *data = [NSData dataWithBytes:bytes length:(NSUInteger)length];
@@ -55,6 +64,7 @@ import "C"
 
 import (
 	"errors"
+	"os"
 	"unsafe"
 )
 
@@ -73,6 +83,22 @@ func (s *serviceImpl) CopyImage(data []byte) error {
 	}
 	if C.fasp_copy_png(unsafe.Pointer(&data[0]), C.int(len(data))) == 0 {
 		return errors.New("failed to copy to clipboard: pasteboard rejected the image")
+	}
+	return nil
+}
+
+// CopyFiles puts the first file on the general pasteboard as a file URL.
+func (s *serviceImpl) CopyFiles(paths []string) error {
+	if len(paths) == 0 {
+		return errors.New("failed to copy files: no files")
+	}
+	if _, err := os.Stat(paths[0]); err != nil {
+		return err
+	}
+	cpath := C.CString(paths[0])
+	defer C.free(unsafe.Pointer(cpath))
+	if C.fasp_copy_file(cpath) == 0 {
+		return errors.New("failed to copy files: pasteboard rejected the file")
 	}
 	return nil
 }

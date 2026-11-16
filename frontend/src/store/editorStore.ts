@@ -12,8 +12,9 @@ export interface AddImageOptions {
 
 interface EditorStore extends EditorState {
   // Starts a new shot from a PNG. Resolves once the image is decoded and the
-  // document is set; rejects when the data is not a decodable image.
-  setImage: (image: string) => Promise<void>;
+  // document is set; rejects when the data is not a decodable image. tool is
+  // selected for the new shot (default crop).
+  setImage: (image: string, tool?: AnnotationTool) => Promise<void>;
   // Adds a PNG to the open shot, to the right of the current content. Resolves
   // once decoded; rejects when the data is not a decodable image. A shot that
   // was replaced while decoding drops the image silently (resolves null).
@@ -175,7 +176,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
   return {
     ...initialState,
 
-    setImage: async (image: string) => {
+    // tool is the tool selected for the new shot: crop after a full-screen
+    // capture, select after a zone capture (the zone is already the crop).
+    setImage: async (image: string, tool: AnnotationTool = 'crop') => {
       const token = ++latestSetImage;
       let size: { width: number; height: number };
       try {
@@ -210,7 +213,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         annotations: [],
         selectedAnnotationId: null,
         selectedImageId: null,
-        selectedTool: 'crop', // Default to crop tool after screenshot
+        selectedTool: tool,
         cropRegion: null,
         pendingCrop: null,
         history: [

@@ -12,4 +12,7 @@ type Service interface {
 	// ReadImage returns the image on the clipboard as PNG bytes, or
 	// ErrNoImage when the clipboard holds none.
 	ReadImage() ([]byte, error)
+	// CopyFiles puts files on the clipboard the way a file manager does, so
+	// they can be pasted into chat apps, mail or a folder.
+	CopyFiles(paths []string) error
 }

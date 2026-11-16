@@ -4,7 +4,7 @@ package capture
 
 /*
 #cgo CFLAGS: -fobjc-arc
-#cgo LDFLAGS: -framework ScreenCaptureKit -framework CoreGraphics -framework ImageIO -framework Foundation -framework UniformTypeIdentifiers
+#cgo LDFLAGS: -framework ScreenCaptureKit -framework AppKit -framework CoreGraphics -framework ImageIO -framework Foundation -framework UniformTypeIdentifiers
 #include <stdlib.h>
 #include "capture_darwin.h"
 */
@@ -102,3 +102,4 @@ func (s *serviceImpl) GetDisplayInfo() ([]*model.DisplayInfo, error) {
 		},
 	}, nil
 }
+

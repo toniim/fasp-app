@@ -3,6 +3,8 @@
 
 // Forward declarations for Go callbacks
 extern void tray_onCapture(void);
+extern void tray_onCaptureZone(void);
+extern void tray_onRecord(void);
 extern void tray_onOpenImage(void);
 extern void tray_onShow(void);
 extern void tray_onHide(void);
@@ -31,6 +33,14 @@ static void update_recents(NSArray<NSString *> *paths);
 
 - (void)onCapture:(id)sender {
     tray_onCapture();
+}
+
+- (void)onCaptureZone:(id)sender {
+    tray_onCaptureZone();
+}
+
+- (void)onRecord:(id)sender {
+    tray_onRecord();
 }
 
 - (void)onOpenImage:(id)sender {
@@ -112,6 +122,18 @@ static void create_status_item(void) {
                                                       keyEquivalent:@""];
         captureItem.target = delegate;
         [menu addItem:captureItem];
+
+        NSMenuItem *zoneItem = [[NSMenuItem alloc] initWithTitle:@"Capture Zone"
+                                                          action:@selector(onCaptureZone:)
+                                                   keyEquivalent:@""];
+        zoneItem.target = delegate;
+        [menu addItem:zoneItem];
+
+        NSMenuItem *recordItem = [[NSMenuItem alloc] initWithTitle:@"Record Screen / Stop Recording"
+                                                            action:@selector(onRecord:)
+                                                     keyEquivalent:@""];
+        recordItem.target = delegate;
+        [menu addItem:recordItem];
 
         NSMenuItem *openImageItem = [[NSMenuItem alloc] initWithTitle:@"Open Image..."
                                                                action:@selector(onOpenImage:)

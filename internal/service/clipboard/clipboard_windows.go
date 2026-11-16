@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"image/png" // decode PNG input, encode PNG output
+	"os"
 	"runtime"
 	"time"
 	"unsafe"
@@ -37,6 +38,7 @@ var (
 
 const (
 	cfDIB        = 8
+	cfHDrop      = 15
 	cfDIBV5      = 17
 	gmemMoveable = 0x0002
 
@@ -63,8 +65,24 @@ func (s *serviceImpl) CopyImage(data []byte) error {
 	if img.Bounds().Empty() {
 		return errors.New("failed to copy to clipboard: image is empty")
 	}
-	if err := setClipboardDIB(imageToDIB(img)); err != nil {
+	if err := setClipboardData(cfDIB, imageToDIB(img)); err != nil {
 		return fmt.Errorf("failed to copy to clipboard: %w", err)
+	}
+	return nil
+}
+
+// CopyFiles puts the files on the clipboard as CF_HDROP, like Explorer's Copy.
+func (s *serviceImpl) CopyFiles(paths []string) error {
+	if len(paths) == 0 {
+		return errors.New("failed to copy files: no files")
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err != nil {
+			return fmt.Errorf("failed to copy files: %w", err)
+		}
+	}
+	if err := setClipboardData(cfHDrop, dropFiles(paths)); err != nil {
+		return fmt.Errorf("failed to copy files: %w", err)
 	}
 	return nil
 }
@@ -145,7 +163,8 @@ func readClipboardBlock(format uintptr) ([]byte, error) {
 	return out, nil
 }
 
-func setClipboardDIB(dib []byte) error {
+// setClipboardData replaces the clipboard with one format.
+func setClipboardData(format uintptr, dib []byte) error {
 	// The clipboard is opened per thread: Open, Set and Close must run on the
 	// same OS thread.
 	runtime.LockOSThread()
@@ -172,7 +191,7 @@ func setClipboardDIB(dib []byte) error {
 	procRtlMoveMemory.Call(ptr, uintptr(unsafe.Pointer(&dib[0])), uintptr(len(dib)))
 	procGlobalUnlock.Call(h)
 
-	if r, _, e := procSetClipboardData.Call(cfDIB, h); r == 0 {
+	if r, _, e := procSetClipboardData.Call(format, h); r == 0 {
 		procGlobalFree.Call(h) // still ours when SetClipboardData fails
 		return fmt.Errorf("SetClipboardData: %w", e)
 	}

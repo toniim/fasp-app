@@ -102,6 +102,20 @@ func tray_onCapture() {
 	}
 }
 
+//export tray_onCaptureZone
+func tray_onCaptureZone() {
+	if globalCallback != nil {
+		go globalCallback(ActionCaptureZone, "")
+	}
+}
+
+//export tray_onRecord
+func tray_onRecord() {
+	if globalCallback != nil {
+		go globalCallback(ActionRecord, "")
+	}
+}
+
 //export tray_onOpenImage
 func tray_onOpenImage() {
 	if globalCallback != nil {

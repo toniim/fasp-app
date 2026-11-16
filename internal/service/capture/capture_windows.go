@@ -35,7 +35,11 @@ func (s *serviceImpl) CaptureActiveDisplay() (*model.CaptureResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to capture screenshot: %w", err)
 	}
+	return encodeResult(pix, width, height)
+}
 
+// encodeResult encodes top-down BGRA pixels as a base64 PNG capture result.
+func encodeResult(pix []byte, width, height int) (*model.CaptureResult, error) {
 	var buf bytes.Buffer
 	enc := png.Encoder{CompressionLevel: png.BestSpeed}
 	if err := enc.Encode(&buf, bgraToRGBA(pix, width, height)); err != nil {
@@ -53,18 +57,33 @@ func (s *serviceImpl) CaptureActiveDisplay() (*model.CaptureResult, error) {
 // captureCursorMonitor copies the monitor under the cursor into a top-down
 // 32 bpp BGRA buffer.
 func captureCursorMonitor() ([]byte, int, int, error) {
+	mr, err := cursorMonitorRect()
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	return captureRect(mr)
+}
+
+// cursorMonitorRect is the rectangle of the monitor under the cursor, in
+// physical virtual-screen pixels.
+func cursorMonitorRect() (rect, error) {
 	var pt point
 	if r, _, e := procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt))); r == 0 {
-		return nil, 0, 0, fmt.Errorf("GetCursorPos: %w", e)
+		return rect{}, fmt.Errorf("GetCursorPos: %w", e)
 	}
 	monitor := monitorFromPoint(pt)
 	mi := monitorInfo{CbSize: uint32(unsafe.Sizeof(monitorInfo{}))}
 	if r, _, e := procGetMonitorInfoW.Call(monitor, uintptr(unsafe.Pointer(&mi))); r == 0 {
-		return nil, 0, 0, fmt.Errorf("GetMonitorInfoW: %w", e)
+		return rect{}, fmt.Errorf("GetMonitorInfoW: %w", e)
 	}
-	left, top := mi.RcMonitor.Left, mi.RcMonitor.Top
-	width := int(mi.RcMonitor.Right - left)
-	height := int(mi.RcMonitor.Bottom - top)
+	return mi.RcMonitor, nil
+}
+
+// captureRect copies a screen rectangle into a top-down 32 bpp BGRA buffer.
+func captureRect(mr rect) ([]byte, int, int, error) {
+	left, top := mr.Left, mr.Top
+	width := int(mr.Right - left)
+	height := int(mr.Bottom - top)
 	if width <= 0 || height <= 0 {
 		return nil, 0, 0, errors.New("monitor has an empty area")
 	}

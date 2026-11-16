@@ -82,6 +82,12 @@ type Settings struct {
 	// maximized (e.g. manually resized), restored on next open.
 	WindowWidth  int `json:"window_width"`
 	WindowHeight int `json:"window_height"`
+
+	// Recording defaults, pre-selected when a recording starts.
+	RecordSystemAudio bool   `json:"record_system_audio"`
+	RecordMicrophone  bool   `json:"record_microphone"`
+	RecordMicDevice   string `json:"record_mic_device"` // "" = system default
+	RecordFPS         int    `json:"record_fps"`
 }
 
 // DefaultSettings returns default application settings
@@ -91,6 +97,8 @@ func DefaultSettings() *Settings {
 	hotkeys := map[string]string{
 		"capture_fullscreen": "cmd+shift+5",
 		"capture_region":     "cmd+shift+6",
+		"capture_zone":       "cmd+shift+7",
+		"record":             "cmd+shift+8",
 	}
 
 	// Use Windows-friendly defaults on Windows
@@ -98,6 +106,8 @@ func DefaultSettings() *Settings {
 		hotkeys = map[string]string{
 			"capture_fullscreen": "PrintScreen",
 			"capture_region":     "Ctrl+Shift+S",
+			"capture_zone":       "Shift+PrintScreen",
+			"record":             "Ctrl+PrintScreen",
 		}
 	}
 
@@ -117,5 +127,7 @@ func DefaultSettings() *Settings {
 		AfterUploadAction: "direct",
 		ServerURL:         "https://api.fasp.me",
 		APIKey:            "",
+		RecordSystemAudio: true,
+		RecordFPS:         30,
 	}
 }

@@ -42,6 +42,10 @@ export interface Settings {
   after_upload_action?: AfterUploadAction;
   server_url?: string;
   api_key?: string;
+  record_system_audio?: boolean;
+  record_microphone?: boolean;
+  record_mic_device?: string;
+  record_fps?: number;
   defaultSaveLocation?: string; // Alias for compatibility
   defaultFormat?: string; // Alias for compatibility
 }

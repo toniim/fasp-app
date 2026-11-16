@@ -10,6 +10,8 @@
 - **Native capture**: GDI on Windows, ScreenCaptureKit on macOS, in-process with no helper scripts; full resolution on scaled (HiDPI) displays.
 - **Annotation tools**: rectangle, arrow, numbered arrow, arrow with text, text, highlight and blur, in eight colours and five sizes.
 - **Blur that really hides things**: the blur box is fully opaque, so nothing underneath survives in the exported image.
+- **Capture Zone**: freeze the screen, drag the area you want, and only that area opens in the editor (Windows; macOS coming).
+- **Screen recording**: record the full screen, one window or a region to MP4 (H.264 + AAC), with computer sound and/or a microphone, using the native hardware encoder (Windows; macOS coming).
 - **Crop** after capturing, before you share.
 - **Zoom and pan**: zoom with Ctrl + mouse wheel, hold Shift and drag to move around a large capture.
 - **Copy, save or upload**: copy to the clipboard, quick-save to a folder, save as PNG or JPEG, or upload to a fasp server and get a link.
@@ -56,11 +58,49 @@ You can also build it yourself; see [Development](#development).
 |---|---|---|
 | Capture (set in Settings) | `PrintScreen` | `Cmd+Shift+5` |
 | Second capture hotkey | `Ctrl+Shift+S` | `Cmd+Shift+6` |
+| Capture Zone | `Shift+PrintScreen` | `Cmd+Shift+7` |
+| Start / stop recording | `Ctrl+PrintScreen` | `Cmd+Shift+8` |
 
 Both capture the screen under the mouse cursor and open it in the editor with the **Crop** tool ready: drag to keep part of it, or pick another tool to annotate the whole capture.
 The editor hides itself first, so it never appears in its own screenshot.
 
 You can also capture from the tray menu or **File → Capture Screenshot**, and open an existing image with **File → Open Image…** (`Ctrl+O`).
+
+### Capture a zone
+
+Press the **Capture Zone** hotkey (or **File → Capture Zone**, or the tray menu). The screen under the mouse freezes and dims; drag the area you want and release. Only that area opens in the editor, with the Select tool ready.
+
+- `Enter` takes the whole screen, `Esc` or a right-click cancels.
+- A size label shows the selection in pixels while you drag.
+
+### Record the screen
+
+Press the **Start / stop recording** hotkey (or **File → Record Screen…**, or the tray menu) and choose:
+
+| Mode | Records |
+|---|---|
+| Full screen | The screen under the mouse pointer |
+| Window | One window, picked from a list, even while other windows cover it. Recording stops by itself when the window closes |
+| Region | An area you drag on the frozen screen after pressing **Select Region** |
+
+Tick **Computer sound** (everything the computer plays) and/or **Microphone** (pick the device). Both are mixed into one audio track. With speakers, the microphone also hears the computer sound, so use headphones to avoid an echo. Your choices become the defaults for the next recording.
+
+While recording, Fasp shrinks to a small bar at the top of the screen with a timer and **Stop**. The bar never appears in the video. Press the hotkey again, click **Stop**, or use the tray menu to finish.
+
+The MP4 is saved in the Quick Save folder (`Recording_<date>_<time>.mp4`) and opens right away in the editor's player, just as a screenshot opens in the editor:
+
+| Button | Shortcut | Result |
+|---|---|---|
+| Copy | `Ctrl+C` | Puts the video file on the clipboard, ready to paste into a chat, an email or a folder |
+| Save As | `Ctrl+Shift+S` | Saves a copy elsewhere |
+| Show in Folder | | Opens the folder with the file |
+| Upload | | Uploads the video to your fasp server and copies the link |
+| | `Space` / `K`, `←` `→` | Play/pause, skip 5 s |
+| | `Esc` | Close the player |
+
+Recordings in the tray **Recents** open in the same player.
+
+Windows 10 draws a yellow border around what is being recorded; Windows 11 does not.
 
 ### Annotate
 
@@ -103,7 +143,7 @@ On macOS, use `Cmd` in place of `Ctrl` for the editor shortcuts.
 
 ### Tray menu
 
-Capture Screenshot, Open Image…, **Recents** (your latest saved screenshots and their folder), Show/Hide Window, Settings… and Quit.
+Capture Screenshot, Capture Zone, Record Screen / Stop Recording, Open Image…, **Recents** (your latest saved screenshots and their folder), Show/Hide Window, Settings… and Quit.
 On Windows, closing the editor window only hides it and Fasp keeps running in the tray; use **Quit** to exit.
 
 ### Settings
@@ -112,7 +152,8 @@ Open **Settings** from the tray or with `Ctrl+,`.
 
 ![Settings window](docs/screenshots/settings.png)
 
-- **Hotkeys**: click the field and press a new combination, or pick a preset.
+- **Hotkeys**: Capture Screenshot, Capture Zone and Start / Stop Recording. Click a field and press a new combination, or pick a preset. One combination can only be used once.
+- **Recording**: the default audio sources, microphone and frame rate (15, 30 or 60 fps) for new recordings.
 - **Account & Server**: the fasp server URL and an API key (create one in fasp under Settings → API Keys, scope `files:write`), with **Test Connection**.
 - **Run at Startup**: start Fasp when you log in.
 - **Save Options**: default folder and format for Quick Save.
@@ -126,6 +167,8 @@ Settings are stored in `%APPDATA%\fasp\settings.json` on Windows and `~/Library/
 - **macOS won't open the app, or says it is damaged.** See step 3 of [Install → macOS](#macos): **Open Anyway** in Privacy & Security, or `xattr -dr com.apple.quarantine /Applications/fasp.app`.
 - **Captures are black or only show the wallpaper (macOS).** Grant **Screen Recording** permission and restart Fasp. After an update, remove fasp from the Screen Recording list and grant it again. For your own builds, `make build-darwin-signed` with a local certificate (`scripts/create-dev-certificate.sh`) keeps the permission across rebuilds.
 - **Cmd+Shift+5 opens the macOS screenshot toolbar instead (macOS).** Pick another hotkey in Fasp Settings, or turn off that shortcut under **System Settings → Keyboard → Keyboard Shortcuts → Screenshots**.
+- **Recording says the microphone access is denied (Windows).** Turn on **Settings → Privacy & security → Microphone → Let desktop apps access your microphone**.
+- **A recording has no computer sound.** Fasp records the default output device; sound played on another device is not included. If the default device changes during a recording, Fasp switches to the new one and that moment is silent.
 - **SmartScreen blocks the installer.** The installer is not code-signed yet: **More info → Run anyway**.
 
 ## Development
@@ -159,11 +202,17 @@ Every pull request also builds, packages and smoke-tests the macOS app; the zip 
 
 ```
 main.go                      Wails app, bindings for the frontend, window and tray wiring
+app_zone.go                  Capture Zone and region selection bindings
+app_recording.go             Recording bindings, the recording bar, saving and results
+app_media.go                 Serves recordings to the in-app player, copy as file, Save As
 focus_windows.go             Gives the web view keyboard focus when the editor is shown
+exclude_capture_windows.go   Keeps the Fasp window out of recordings
+cmd/recspike/                Command-line recorder for measuring the pipeline without the UI
 internal/
   model/                     Settings and capture types
   service/
-    capture/                 Screen capture (GDI on Windows, ScreenCaptureKit on macOS)
+    capture/                 Screen capture (GDI on Windows, ScreenCaptureKit on macOS), Capture Zone overlay
+    recorder/                Screen recording: Windows.Graphics.Capture + Media Foundation, WASAPI audio and mixer
     clipboard/               Copy images (Win32 clipboard, NSPasteboard)
     hotkey/                  Global hotkeys
     file/                    Save/open dialogs, default save folder
@@ -176,7 +225,9 @@ internal/
   version/                   Version stamped at build time
 frontend/src/
   components/EditorWindow/   Konva canvas editor, toolbar, zoom bar, action bar
-  components/SettingsWindow/ Settings dialog
+  components/SettingsWindow/ Settings dialog and shortcut field
+  components/Recording/      Record dialog, recording bar, "recording failed" panel
+  components/VideoViewer/    In-app player for recordings
   store/                     Zustand stores
   utils/editor-geometry.ts   Fit, zoom and pan maths
 build/                       Icons, Windows manifest and installer, macOS plists

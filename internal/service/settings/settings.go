@@ -182,6 +182,30 @@ func (s *serviceImpl) Set(key string, value interface{}) error {
 		} else {
 			return fmt.Errorf("invalid type for window_height")
 		}
+	case "record_system_audio":
+		if v, ok := value.(bool); ok {
+			s.settings.RecordSystemAudio = v
+		} else {
+			return fmt.Errorf("invalid type for record_system_audio")
+		}
+	case "record_microphone":
+		if v, ok := value.(bool); ok {
+			s.settings.RecordMicrophone = v
+		} else {
+			return fmt.Errorf("invalid type for record_microphone")
+		}
+	case "record_mic_device":
+		if v, ok := value.(string); ok {
+			s.settings.RecordMicDevice = v
+		} else {
+			return fmt.Errorf("invalid type for record_mic_device")
+		}
+	case "record_fps":
+		if v, ok := toInt(value); ok && (v == 15 || v == 30 || v == 60) {
+			s.settings.RecordFPS = v
+		} else {
+			return fmt.Errorf("record_fps must be 15, 30 or 60")
+		}
 	default:
 		return fmt.Errorf("unknown setting key: %s", key)
 	}

@@ -3,9 +3,6 @@
 package main
 
 import (
-	"os"
-	"unsafe"
-
 	"golang.org/x/sys/windows"
 )
 
@@ -26,22 +23,7 @@ const wmSetFocus = 0x0007
 // clicked inside the editor. Posting WM_SETFOCUS runs Wails' own handler,
 // which moves focus into the web view.
 func focusWebView() {
-	class, err := windows.UTF16PtrFromString("wailsWindow")
-	if err != nil {
-		return
-	}
-	self := uint32(os.Getpid())
-	var hwnd uintptr
-	for {
-		hwnd, _, _ = procFindWindowExW.Call(0, hwnd, uintptr(unsafe.Pointer(class)), 0)
-		if hwnd == 0 {
-			return
-		}
-		var pid uint32
-		procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
-		if pid == self {
-			procPostMessageW.Call(hwnd, wmSetFocus, 0, 0)
-			return
-		}
+	if hwnd := ownWindow(); hwnd != 0 {
+		procPostMessageW.Call(hwnd, wmSetFocus, 0, 0)
 	}
 }
