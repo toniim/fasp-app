@@ -1,6 +1,6 @@
 # Fasp
 
-**Fast screenshot and annotation for Windows and macOS.** Press a hotkey, mark up the capture with boxes, arrows, numbered steps, text, highlights and blur, then copy, save or upload it in a second.
+**Fast screenshots, annotation and screen recording for Windows and macOS.** Press a hotkey, mark up the capture with boxes, arrows, numbered steps, text, highlights and blur, then copy, save or upload it in a second. Freeze the screen to grab just one area, put several shots side by side on one canvas, or record the screen to MP4.
 
 ![Fasp editor with a rectangle, numbered arrows, text, a highlight and a blurred secret](docs/screenshots/editor.png)
 
@@ -10,13 +10,15 @@
 - **Native capture**: GDI on Windows, ScreenCaptureKit on macOS, in-process with no helper scripts; full resolution on scaled (HiDPI) displays.
 - **Annotation tools**: rectangle, arrow, numbered arrow, arrow with text, text, highlight and blur, in eight colours and five sizes.
 - **Blur that really hides things**: the blur box is fully opaque, so nothing underneath survives in the exported image.
-- **Capture Zone**: freeze the screen, drag the area you want, and only that area opens in the editor (Windows; macOS coming).
-- **Screen recording**: record the full screen, one window or a region to MP4 (H.264 + AAC), with computer sound and/or a microphone, using the native hardware encoder (Windows; macOS coming).
+- **Capture Zone (freeze shot)**: the screen freezes, you drag the area you want, and only that area opens in the editor. Menus, tooltips and hover states stay exactly as they were when you pressed the hotkey.
+- **Several images on one canvas**: add more screenshots, image files, a pasted image or files dropped on the editor; move, resize and reorder them, and arrange them in a row, a column or a grid.
+- **Screen recording**: record the full screen, one window or a region to MP4 (H.264 + AAC), with computer sound and/or a microphone, using the native hardware encoder. Fasp's own recording bar never appears in the video.
+- **Built-in player**: a recording opens in the editor's player, ready to copy as a file, save or upload.
 - **Crop** after capturing, before you share.
 - **Zoom and pan**: zoom with Ctrl + mouse wheel, hold Shift and drag to move around a large capture.
 - **Copy, save or upload**: copy to the clipboard, quick-save to a folder, save as PNG or JPEG, or upload to a fasp server and get a link.
 - **Tray icon** with recent screenshots, and an option to start at login.
-- **Open any image** (PNG, JPEG, GIF, BMP, WebP) to annotate it.
+- **Open any image** (PNG, JPEG, GIF, BMP, WebP) to annotate it, or paste one from the clipboard.
 
 ## Install
 
@@ -43,8 +45,10 @@ Requires macOS 14 (Sonoma) or later, on Apple Silicon or Intel.
      xattr -dr com.apple.quarantine /Applications/fasp.app
      ```
      This is also the fix if macOS says the app *"is damaged and can't be opened"*.
-4. **Allow screen recording.** On the first capture macOS asks for permission: turn **fasp** on under **System Settings → Privacy & Security → Screen & System Audio Recording** (*Screen Recording* on macOS 14), then quit Fasp from the menu bar icon and open it again.
+4. **Allow screen recording.** On the first capture macOS asks for permission: turn **fasp** on under **System Settings → Privacy & Security → Screen & System Audio Recording** (*Screen Recording* on macOS 14), then quit Fasp from the menu bar icon and open it again. The same permission covers Capture Zone, screen recording and computer sound.
 5. Fasp lives in the menu bar. Press **Cmd+Shift+5** to capture.
+
+The first time you record with the **Microphone** ticked, macOS asks for microphone access; click **Allow**. If you clicked **Don't Allow**, turn **fasp** on under **System Settings → Privacy & Security → Microphone**.
 
 **After updating**, repeat steps 3 and 4: because the app is not signed with a Developer ID, macOS treats each version as a new app and drops the old Screen Recording permission. If the toggle is already on but captures fail, remove **fasp** from that list with **−** (or run `tccutil reset ScreenCapture com.wails.fasp`) and grant it again.
 
@@ -66,12 +70,16 @@ The editor hides itself first, so it never appears in its own screenshot.
 
 You can also capture from the tray menu or **File → Capture Screenshot**, and open an existing image with **File → Open Image…** (`Ctrl+O`).
 
-### Capture a zone
+### Capture a zone (freeze shot)
 
-Press the **Capture Zone** hotkey (or **File → Capture Zone**, or the tray menu). The screen under the mouse freezes and dims; drag the area you want and release. Only that area opens in the editor, with the Select tool ready.
+Press the **Capture Zone** hotkey (or **File → Capture Zone**, or the tray menu). The screen under the mouse freezes and dims; drag the area you want and release. Only that area opens in the editor, at full pixel resolution, with the Select tool ready.
 
-- `Enter` takes the whole screen, `Esc` or a right-click cancels.
+Because the picture is taken the moment you press the hotkey, you can grab things that disappear as soon as you click: an open menu, a tooltip, a hover state, a frame of a video.
+
+- `Enter` takes the whole screen, `Esc` or a right-click cancels (the editor comes back if it was open).
 - A size label shows the selection in pixels while you drag.
+- With several displays, the display under the mouse freezes.
+- If the editor already holds a shot, the new zone replaces it. To keep the current shot and add another one next to it, use **Add screenshot** in the editor instead (see [Several images on one canvas](#several-images-on-one-canvas)).
 
 ### Record the screen
 
@@ -83,7 +91,9 @@ Press the **Start / stop recording** hotkey (or **File → Record Screen…**, o
 | Window | One window, picked from a list, even while other windows cover it. Recording stops by itself when the window closes |
 | Region | An area you drag on the frozen screen after pressing **Select Region** |
 
-Tick **Computer sound** (everything the computer plays) and/or **Microphone** (pick the device). Both are mixed into one audio track. With speakers, the microphone also hears the computer sound, so use headphones to avoid an echo. Your choices become the defaults for the next recording.
+Pick the frame rate (15, 30 or 60 fps), then tick **Computer sound** (everything the computer plays) and/or **Microphone** (pick the device). Both are mixed into one audio track. With speakers, the microphone also hears the computer sound, so use headphones to avoid an echo. Your choices become the defaults for the next recording.
+
+On macOS, computer sound needs no extra permission (it comes with Screen Recording), and Fasp's own sounds are left out. The microphone asks for permission the first time (see [Install → macOS](#macos)).
 
 While recording, Fasp shrinks to a small bar at the top of the screen with a timer and **Stop**. The bar never appears in the video. Press the hotkey again, click **Stop**, or use the tray menu to finish.
 
@@ -109,7 +119,7 @@ Pick a tool in the toolbar or press its key, choose a colour and a size, then dr
 | Tool | Key | What it does |
 |---|---|---|
 | Select | `S` | Select, move, resize and rotate annotations; drag on empty space to select several |
-| Crop | `C` | Drag the area to keep, then **Apply Crop** (`Enter`) or **Cancel** (`Esc`) |
+| Crop | `C` | Drag the area to keep, then **Apply Crop** (`Enter`) or **Cancel** (`Esc`). Crops the selected image, or the whole canvas when no image is selected |
 | Rectangle | `R` | Outline an area |
 | Arrow | `A` | Point at something |
 | Numbered arrow | `N` | Arrow with a step number that counts up: 1, 2, 3… |
@@ -118,9 +128,30 @@ Pick a tool in the toolbar or press its key, choose a colour and a size, then dr
 | Highlight | `H` | Translucent marker over text |
 | Blur | `B` | Opaque pattern that hides passwords, keys and personal data |
 
-Size: `[` and `]`, or `Ctrl+1` … `Ctrl+5`. Undo `Ctrl+Z`, redo `Ctrl+Shift+Z`. Delete the selection with `Delete`, `Backspace` or `Ctrl+D`; select everything with `Ctrl+A`.
+Size: `[` and `]`, or `Ctrl+1` … `Ctrl+5`. Undo `Ctrl+Z`, redo `Ctrl+Shift+Z`. Delete the selection with `Delete`, `Backspace` or `Ctrl+D`; select everything with `Ctrl+A`. Paste an image from the clipboard with `Ctrl+V`.
 
 ![Cropping a capture: the area outside the dashed box is dimmed](docs/screenshots/crop.png)
+
+### Several images on one canvas
+
+One shot can hold several images, for example two screens side by side or a before/after pair. Add one with:
+
+| Way | Result |
+|---|---|
+| **Add screenshot** (toolbar) | Takes a new screenshot without the editor in it and opens it in the Crop tool: drag the part to keep and **Apply Crop**, **Keep Full** (`Esc`) to keep all of it, or **Cancel** to drop it |
+| **Add image** (toolbar) | Picks an image file |
+| `Ctrl+V` | Pastes an image from the clipboard (in a text field it pastes text as usual) |
+| Drag and drop | Drop image files on the editor; they are placed where you drop them. Files that are not images are skipped |
+
+With the **Select** tool, click an image to select it, then:
+
+- drag it to move it, or drag a corner to resize it (the aspect ratio is kept);
+- **Bring forward** / **Send backward** change which image is on top;
+- `Delete` or `Backspace` removes it.
+
+With two or more images, the **Arrange in a row**, **Arrange in a column** and **Arrange in a grid** buttons line them up, and the gap field next to them sets the space between them. The canvas grows to fit the images, and the **Canvas background color** fills the space around them.
+
+Copy, Save and Upload export the whole canvas at the images' full resolution. Undo and redo cover every image change.
 
 ### Zoom and pan
 
@@ -143,7 +174,7 @@ On macOS, use `Cmd` in place of `Ctrl` for the editor shortcuts.
 
 ### Tray menu
 
-Capture Screenshot, Capture Zone, Record Screen / Stop Recording, Open Image…, **Recents** (your latest saved screenshots and their folder), Show/Hide Window, Settings… and Quit.
+Capture Screenshot, Capture Zone, Record Screen / Stop Recording, Open Image…, **Recents** (your latest saved screenshots and recordings, and their folder), Show/Hide Window, Settings… and Quit.
 On Windows, closing the editor window only hides it and Fasp keeps running in the tray; use **Quit** to exit.
 
 ### Settings
@@ -168,7 +199,9 @@ Settings are stored in `%APPDATA%\fasp\settings.json` on Windows and `~/Library/
 - **Captures are black or only show the wallpaper (macOS).** Grant **Screen Recording** permission and restart Fasp. After an update, remove fasp from the Screen Recording list and grant it again. For your own builds, `make build-darwin-signed` with a local certificate (`scripts/create-dev-certificate.sh`) keeps the permission across rebuilds.
 - **Cmd+Shift+5 opens the macOS screenshot toolbar instead (macOS).** Pick another hotkey in Fasp Settings, or turn off that shortcut under **System Settings → Keyboard → Keyboard Shortcuts → Screenshots**.
 - **Recording says the microphone access is denied (Windows).** Turn on **Settings → Privacy & security → Microphone → Let desktop apps access your microphone**.
-- **A recording has no computer sound.** Fasp records the default output device; sound played on another device is not included. If the default device changes during a recording, Fasp switches to the new one and that moment is silent.
+- **Recording says microphone permission is required (macOS).** Turn **fasp** on under **System Settings → Privacy & Security → Microphone**, then start the recording again.
+- **Cmd+V does nothing in a text field (macOS).** Update to v26.11.4 or later; older versions had no Edit menu, so copy and paste did not reach text fields.
+- **A recording has no computer sound (Windows).** Fasp records the default output device; sound played on another device is not included. If the default device changes during a recording, Fasp switches to the new one and that moment is silent.
 - **SmartScreen blocks the installer.** The installer is not code-signed yet: **More info → Run anyway**.
 
 ## Development
@@ -211,9 +244,10 @@ cmd/recspike/                Command-line recorder for measuring the pipeline wi
 internal/
   model/                     Settings and capture types
   service/
-    capture/                 Screen capture (GDI on Windows, ScreenCaptureKit on macOS), Capture Zone overlay
-    recorder/                Screen recording: Windows.Graphics.Capture + Media Foundation, WASAPI audio and mixer
-    clipboard/               Copy images (Win32 clipboard, NSPasteboard)
+    capture/                 Screen capture (GDI on Windows, ScreenCaptureKit on macOS), Capture Zone overlay (Win32 / AppKit)
+    recorder/                Screen recording: Windows.Graphics.Capture + Media Foundation + WASAPI on Windows,
+                             ScreenCaptureKit + AVAssetWriter + AVCaptureSession on macOS, shared audio mixer
+    clipboard/               Copy and read images, copy files (Win32 clipboard, NSPasteboard)
     hotkey/                  Global hotkeys
     file/                    Save/open dialogs, default save folder
     recents/                 Recently saved screenshots
@@ -230,6 +264,7 @@ frontend/src/
   components/VideoViewer/    In-app player for recordings
   store/                     Zustand stores
   utils/editor-geometry.ts   Fit, zoom and pan maths
+  utils/image-layout.ts      Row, column and grid layout of several images
 build/                       Icons, Windows manifest and installer, macOS plists
 docs/                        Design notes and architecture docs
 ```
