@@ -22,6 +22,22 @@ func zoneLargeEnough(r image.Rectangle) bool {
 	return r.Dx() >= minZone && r.Dy() >= minZone
 }
 
+// windowAt returns the window a click at (x, y) takes: the front-most window
+// in wins (Z order, front-most first) that contains the point, clipped to
+// bounds. A window behind it is never chosen, since it is not what the user
+// sees there; ok is false when there is none or the clipped window is too
+// small.
+func windowAt(wins []image.Rectangle, x, y int, bounds image.Rectangle) (r image.Rectangle, ok bool) {
+	p := image.Pt(x, y)
+	for _, w := range wins {
+		if p.In(w) {
+			r = w.Intersect(bounds)
+			return r, zoneLargeEnough(r)
+		}
+	}
+	return image.Rectangle{}, false
+}
+
 // cropBGRA copies r out of a top-down BGRA buffer of the given width.
 func cropBGRA(pix []byte, width int, r image.Rectangle) []byte {
 	out := make([]byte, r.Dx()*r.Dy()*4)

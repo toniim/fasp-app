@@ -73,14 +73,16 @@ function App() {
 
   // Listen for hotkey events
   useEffect(() => {
+    // A hotkey (or the tray menu) captures the screen as it is, Fasp's own
+    // window included, so Fasp itself can be shown in a shot.
     const unsubscribeCapture = EventsOn('hotkey:capture', () => {
-      handleCapture();
+      handleCapture(false);
     });
 
     // Region capture uses the same flow: the capture opens in the crop tool,
     // so the user drags the part of the screen they want to keep.
     const unsubscribeRegion = EventsOn('hotkey:capture_region', () => {
-      handleCapture();
+      handleCapture(false);
     });
 
     const unsubscribeSettings = EventsOn('open:settings', () => {
@@ -93,7 +95,7 @@ function App() {
     });
 
     const unsubscribeZone = EventsOn('hotkey:capture_zone', () => {
-      handleCaptureZone();
+      handleCaptureZone(false);
     });
 
     const unsubscribeOpenRecord = EventsOn('open:record', () => {
@@ -140,15 +142,18 @@ function App() {
     };
   }, []);
 
-  const handleCapture = async () => {
+  // hideFasp: take Fasp's window off screen first. The buttons inside Fasp do,
+  // or the shot would show only Fasp; a hotkey does not, so Fasp can be in it.
+  const handleCapture = async (hideFasp = true) => {
     if (recordingRef.current) return;
     try {
       setIsCapturing(true);
 
-      // Hide our own window first, otherwise the app ends up in its own
-      // screenshot. Give the compositor a beat to actually take it off screen.
-      WindowHide();
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (hideFasp) {
+        // Give the compositor a beat to actually take it off screen.
+        WindowHide();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
 
       const result = await CaptureActiveDisplay();
 
@@ -170,18 +175,25 @@ function App() {
   };
 
   // Freeze the screen, let the user drag a zone, and open only that zone.
-  const handleCaptureZone = async () => {
+  const handleCaptureZone = async (hideFasp = true) => {
     if (recordingRef.current) return;
-    const hadImage = selectHasContent(useEditorStore.getState());
+    // Whether the user was working in Fasp when the capture started. A hotkey
+    // pressed from another app must not bring Fasp up on Esc.
+    const wasInFasp = document.hasFocus() && selectHasContent(useEditorStore.getState());
     try {
       setIsCapturing(true);
-      WindowHide();
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (hideFasp) {
+        WindowHide();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
 
       const result = await CaptureZone();
       if (!result) {
-        // Esc: go back to where the user was.
-        if (hadImage) ShowWindow();
+        // Esc: leave the screen as it was. A window that stayed up is still
+        // there; one hidden for the capture comes back only if the user was
+        // working in it. The overlay hands the focus back to the app that
+        // had it.
+        if (hideFasp && wasInFasp) ShowWindow();
         return;
       }
       ShowWindow();
@@ -237,11 +249,11 @@ function App() {
         <div className="welcome-screen">
           <h1>Fasp</h1>
           <p>Screenshot & Annotation Tool</p>
-          <button className="capture-button" onClick={handleCapture} disabled={isCapturing}>
+          <button className="capture-button" onClick={() => handleCapture(true)} disabled={isCapturing}>
             {Icons.camera}
             <span>{isCapturing ? 'Capturing...' : 'Capture Screenshot'}</span>
           </button>
-          <button className="capture-button" onClick={handleCaptureZone} disabled={isCapturing}>
+          <button className="capture-button" onClick={() => handleCaptureZone(true)} disabled={isCapturing}>
             {Icons.zone}
             <span>Capture Zone</span>
           </button>

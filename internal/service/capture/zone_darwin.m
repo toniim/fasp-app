@@ -35,6 +35,9 @@ typedef void (^ZoneFinish)(int status, NSRect sel);
 @property(nonatomic) CGFloat scale; // image pixels per point
 @property(nonatomic) int minPixels;
 @property(nonatomic, copy) ZoneFinish finish;
+// Windows on screen when it was frozen, front-most first, as rects in view
+// points clipped to the display. A click picks the one under the cursor.
+@property(nonatomic, strong) NSArray<NSValue *> *windowRects;
 @end
 
 @implementation FaspZoneView {
@@ -62,6 +65,21 @@ typedef void (^ZoneFinish)(int status, NSRect sel);
                owner:self
             userInfo:nil]];
     [super updateTrackingAreas];
+}
+
+- (BOOL)largeEnough:(NSRect)r {
+    return r.size.width * self.scale >= self.minPixels && r.size.height * self.scale >= self.minPixels;
+}
+
+// windowAt returns the front-most window under p, or NSZeroRect when there is
+// none or it is too small to capture (a window behind it is not chosen: it is
+// not what the user sees at p).
+- (NSRect)windowAt:(NSPoint)p {
+    for (NSValue *v in self.windowRects) {
+        NSRect r = v.rectValue;
+        if (NSPointInRect(p, r)) return [self largeEnough:r] ? r : NSZeroRect;
+    }
+    return NSZeroRect;
 }
 
 - (NSRect)selection {
@@ -112,10 +130,17 @@ typedef void (^ZoneFinish)(int status, NSRect sel);
     _cur = [self local:e];
     _dragging = NO;
     NSRect r = [self selection];
-    if (r.size.width * self.scale >= self.minPixels && r.size.height * self.scale >= self.minPixels) {
+    if ([self largeEnough:r]) {
         [self complete:0 rect:r];
+        return;
+    }
+    // A click (or a tiny drag) takes the window under it; on the desktop it
+    // keeps waiting.
+    NSRect w = [self windowAt:_start];
+    if (!NSIsEmptyRect(w)) {
+        [self complete:0 rect:w];
     } else {
-        [self setNeedsDisplay:YES]; // a click or a tiny drag: keep waiting
+        [self setNeedsDisplay:YES];
     }
 }
 
@@ -186,31 +211,38 @@ typedef void (^ZoneFinish)(int status, NSRect sel);
 
     if (_dragging) {
         NSRect r = [self selection];
-        if (r.size.width > 0 && r.size.height > 0) {
-            [NSGraphicsContext saveGraphicsState];
-            NSRectClip(r);
-            [self drawImageIn:b];
-            [NSGraphicsContext restoreGraphicsState];
-
-            // Border just outside the selection so it never covers its pixels.
-            NSBezierPath *border = [NSBezierPath bezierPathWithRect:NSInsetRect(r, -1, -1)];
-            border.lineWidth = 2;
-            [[self accent] setStroke];
-            [border stroke];
-
-            NSString *label = [NSString stringWithFormat:@"%ld × %ld",
-                               lround(r.size.width * self.scale), lround(r.size.height * self.scale)];
-            [self badge:label x:r.origin.x y:r.origin.y above:YES];
-        }
+        if (r.size.width > 0 && r.size.height > 0) [self showZone:r];
     } else {
-        if (_hasMouse) { // crosshair guides for precise aiming
+        if (_hasMouse) {
+            // The window a click would take, then crosshair guides for
+            // precise aiming of a drag.
+            NSRect w = [self windowAt:_mouse];
+            if (!NSIsEmptyRect(w)) [self showZone:w];
             [[self accent] setFill];
             NSRectFill(NSMakeRect(_mouse.x, 0, 1, b.size.height));
             NSRectFill(NSMakeRect(0, _mouse.y, b.size.width, 1));
         }
-        [self badge:@"Drag to select  ·  Enter: whole screen  ·  Esc: cancel"
+        [self badge:@"Drag to select  ·  Click: window  ·  Enter: whole screen  ·  Esc: cancel"
                   x:b.size.width / 2 y:24 above:NO];
     }
+}
+
+// showZone draws r undimmed with a border and its size in pixels.
+- (void)showZone:(NSRect)r {
+    [NSGraphicsContext saveGraphicsState];
+    NSRectClip(r);
+    [self drawImageIn:self.bounds];
+    [NSGraphicsContext restoreGraphicsState];
+
+    // Border just outside the zone so it never covers its pixels.
+    NSBezierPath *border = [NSBezierPath bezierPathWithRect:NSInsetRect(r, -1, -1)];
+    border.lineWidth = 2;
+    [[self accent] setStroke];
+    [border stroke];
+
+    NSString *label = [NSString stringWithFormat:@"%ld × %ld",
+                       lround(r.size.width * self.scale), lround(r.size.height * self.scale)];
+    [self badge:label x:r.origin.x y:r.origin.y above:YES];
 }
 @end
 
@@ -225,9 +257,36 @@ static NSScreen *screenForDisplay(CGDirectDisplayID id) {
     return nil;
 }
 
+// windowRectsOn lists the normal windows on screen (layer 0, not fully
+// transparent), front-most first, clipped to display (global Quartz points)
+// and moved to display-local points. Taken right after the freeze, so it
+// matches the frozen picture; the overlay itself is not up yet.
+static NSArray<NSValue *> *windowRectsOn(CGRect display) {
+    NSMutableArray<NSValue *> *out = [NSMutableArray array];
+    CFArrayRef list = CGWindowListCopyWindowInfo(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+    if (list == NULL) return out;
+    for (NSDictionary *info in (__bridge NSArray *)list) {
+        if ([info[(__bridge NSString *)kCGWindowLayer] intValue] != 0) continue; // menu bar, Dock, overlays
+        NSNumber *alpha = info[(__bridge NSString *)kCGWindowAlpha];
+        if (alpha != nil && alpha.doubleValue <= 0) continue;
+        NSDictionary *boundsDict = info[(__bridge NSString *)kCGWindowBounds];
+        CGRect r;
+        if (boundsDict == nil || !CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)boundsDict, &r)) continue;
+        r = CGRectIntersection(r, display);
+        if (CGRectIsEmpty(r)) continue;
+        r.origin.x -= display.origin.x;
+        r.origin.y -= display.origin.y;
+        [out addObject:[NSValue valueWithRect:NSRectFromCGRect(r)]];
+    }
+    CFRelease(list);
+    return out;
+}
+
 // showOverlay runs on the main thread. It returns an error message, or nil
 // once the overlay is up; finish is then called exactly once.
-static NSString *showOverlay(CGImageRef image, CGDirectDisplayID displayID, int minPixels, ZoneFinish finish) {
+static NSString *showOverlay(CGImageRef image, CGDirectDisplayID displayID, NSArray<NSValue *> *windowRects,
+                             int minPixels, ZoneFinish finish) {
     if (gZoneWindow != nil) return @"a zone selection is already open";
     NSScreen *screen = screenForDisplay(displayID);
     if (screen == nil) return @"could not find the screen under the cursor";
@@ -252,8 +311,21 @@ static NSString *showOverlay(CGImageRef image, CGDirectDisplayID displayID, int 
     view.image = [[NSImage alloc] initWithCGImage:image size:frame.size];
     view.scale = frame.size.width > 0 ? (CGFloat)CGImageGetWidth(image) / frame.size.width : 1;
     view.minPixels = minPixels;
+    view.windowRects = windowRects;
+    // The overlay takes the focus for Esc and Enter. On cancel the app the
+    // user was in gets it back, so the screen stays as it was; a selection
+    // goes on to the editor, which takes the focus anyway.
+    NSRunningApplication *previous = NSWorkspace.sharedWorkspace.frontmostApplication;
     view.finish = ^(int status, NSRect sel) {
         gZoneWindow = nil;
+        if (status == 1 && previous != nil && ![previous isEqual:NSRunningApplication.currentApplication]) {
+            if (@available(macOS 14.0, *)) {
+                [NSApp yieldActivationToApplication:previous];
+                [previous activateWithOptions:0];
+            } else {
+                [previous activateWithOptions:0];
+            }
+        }
         finish(status, sel);
     };
     win.contentView = view;
@@ -289,13 +361,14 @@ int fasp_zone_select(int wantImage, int minPixels, fasp_zone_result *out) {
         out->boundsH = bounds.size.height;
         out->imgW = (int)CGImageGetWidth(image);
         out->imgH = (int)CGImageGetHeight(image);
+        NSArray<NSValue *> *windowRects = windowRectsOn(bounds);
 
         __block int status = -1;
         __block NSRect sel = NSZeroRect;
         __block NSString *failure = nil;
         dispatch_semaphore_t done = dispatch_semaphore_create(0);
         dispatch_async(dispatch_get_main_queue(), ^{
-            failure = showOverlay(image, displayID, minPixels, ^(int st, NSRect r) {
+            failure = showOverlay(image, displayID, windowRects, minPixels, ^(int st, NSRect r) {
                 status = st;
                 sel = r;
                 dispatch_semaphore_signal(done);

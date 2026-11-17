@@ -161,6 +161,7 @@ type zoneOverlay struct {
 	clean, dim, back *gdiSurface
 	font             uintptr
 	accent, label    uintptr // brushes
+	wins             []image.Rectangle // see windowTargets; a click takes one
 	dragging         bool
 	x0, y0, mx, my   int
 	result           image.Rectangle
@@ -195,8 +196,9 @@ func registerZoneClass() error {
 }
 
 // selectZone shows the frozen pixels over the monitor at mr and blocks until
-// the user selects a zone (returned in image coordinates) or cancels.
-func selectZone(pix []byte, w, h int, mr rect) (image.Rectangle, error) {
+// the user selects a zone (returned in image coordinates) or cancels. wins are
+// the windows a click can take, in image coordinates.
+func selectZone(pix []byte, w, h int, mr rect, wins []image.Rectangle) (image.Rectangle, error) {
 	if !zoneMu.TryLock() {
 		return image.Rectangle{}, errors.New("a zone selection is already open")
 	}
@@ -211,18 +213,18 @@ func selectZone(pix []byte, w, h int, mr rect) (image.Rectangle, error) {
 		// The window and its message loop must stay on one OS thread.
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-		r, err := runZoneOverlay(pix, w, h, mr)
+		r, err := runZoneOverlay(pix, w, h, mr, wins)
 		done <- res{r, err}
 	}()
 	out := <-done
 	return out.r, out.err
 }
 
-func runZoneOverlay(pix []byte, w, h int, mr rect) (image.Rectangle, error) {
+func runZoneOverlay(pix []byte, w, h int, mr rect, wins []image.Rectangle) (image.Rectangle, error) {
 	if err := registerZoneClass(); err != nil {
 		return image.Rectangle{}, err
 	}
-	o := &zoneOverlay{bounds: image.Rect(0, 0, w, h), mx: -1, my: -1}
+	o := &zoneOverlay{bounds: image.Rect(0, 0, w, h), wins: wins, mx: -1, my: -1}
 	defer o.free()
 	var err error
 	if o.clean, err = newSurface(w, h); err != nil {
@@ -250,7 +252,15 @@ func runZoneOverlay(pix []byte, w, h int, mr rect) (image.Rectangle, error) {
 	}
 	o.hwnd = hwnd
 	o.makeFont()
+	// The overlay takes the foreground for Esc and Enter. On cancel the window
+	// the user was in gets it back, so the screen stays as it was.
+	previous, _, _ := procGetForegroundWindow.Call()
 	forceForeground(hwnd)
+	defer func() {
+		if !o.selected && previous != 0 && previous != hwnd {
+			procSetForegroundWindow.Call(previous)
+		}
+	}()
 
 	var msg winMsg
 	for {
@@ -338,8 +348,10 @@ func zoneWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		x, y := lparamXY(lparam)
 		if r := normalizeZone(o.x0, o.y0, x, y, o.bounds); zoneLargeEnough(r) {
 			o.finish(r)
+		} else if win, ok := windowAt(o.wins, o.x0, o.y0, o.bounds); ok {
+			o.finish(win) // a click takes the window under it
 		} else {
-			procInvalidateRect.Call(hwnd, 0, 0) // a click: keep waiting
+			procInvalidateRect.Call(hwnd, 0, 0) // a click on the desktop: keep waiting
 		}
 		return 0
 	case wmRButtonUp:
@@ -385,21 +397,30 @@ func (o *zoneOverlay) paint(hwnd uintptr) {
 	procSetTextColor.Call(back, colorText)
 
 	if o.dragging {
-		r := normalizeZone(o.x0, o.y0, o.mx, o.my, o.bounds)
-		if !r.Empty() {
-			procBitBlt.Call(back, uintptr(r.Min.X), uintptr(r.Min.Y), uintptr(r.Dx()), uintptr(r.Dy()),
-				o.clean.dc, uintptr(r.Min.X), uintptr(r.Min.Y), srcCopy)
-			o.frame(back, r)
-			o.badge(back, fmt.Sprintf("%d × %d", r.Dx(), r.Dy()), r.Min.X, r.Min.Y, true)
+		if r := normalizeZone(o.x0, o.y0, o.mx, o.my, o.bounds); !r.Empty() {
+			o.showZone(back, r)
 		}
 	} else {
-		if o.mx >= 0 { // crosshair guides for precise aiming
+		if o.mx >= 0 {
+			// The window a click would take, then crosshair guides for
+			// precise aiming of a drag.
+			if win, ok := windowAt(o.wins, o.mx, o.my, o.bounds); ok {
+				o.showZone(back, win)
+			}
 			o.fill(back, image.Rect(o.mx, 0, o.mx+1, h))
 			o.fill(back, image.Rect(0, o.my, w, o.my+1))
 		}
-		o.badge(back, "Drag to select  ·  Enter: whole screen  ·  Esc: cancel", w/2, 24, false)
+		o.badge(back, "Drag to select  ·  Click: window  ·  Enter: whole screen  ·  Esc: cancel", w/2, 24, false)
 	}
 	procBitBlt.Call(hdc, 0, 0, uintptr(w), uintptr(h), back, 0, 0, srcCopy)
+}
+
+// showZone draws r undimmed with a border and its size in pixels.
+func (o *zoneOverlay) showZone(dc uintptr, r image.Rectangle) {
+	procBitBlt.Call(dc, uintptr(r.Min.X), uintptr(r.Min.Y), uintptr(r.Dx()), uintptr(r.Dy()),
+		o.clean.dc, uintptr(r.Min.X), uintptr(r.Min.Y), srcCopy)
+	o.frame(dc, r)
+	o.badge(dc, fmt.Sprintf("%d × %d", r.Dx(), r.Dy()), r.Min.X, r.Min.Y, true)
 }
 
 func (o *zoneOverlay) fill(dc uintptr, r image.Rectangle) {
@@ -466,6 +487,6 @@ func freezeAndSelect() (pix []byte, w, h int, zone image.Rectangle, mr rect, err
 		err = fmt.Errorf("failed to capture screenshot: %w", err)
 		return
 	}
-	zone, err = selectZone(pix, w, h, mr)
+	zone, err = selectZone(pix, w, h, mr, windowTargets(mr))
 	return
 }

@@ -73,3 +73,33 @@ func TestCropBGRA(t *testing.T) {
 		}
 	}
 }
+
+// A click takes the front-most window under it, clipped to the monitor, and
+// never a window behind it.
+func TestWindowAt(t *testing.T) {
+	b := image.Rect(0, 0, 1000, 800)
+	wins := []image.Rectangle{
+		image.Rect(100, 100, 300, 300),   // front-most
+		image.Rect(0, 0, 600, 500),       // behind it
+		image.Rect(900, 700, 1200, 1000), // runs off the monitor
+		image.Rect(700, 100, 702, 300),   // 2 px wide
+		image.Rect(650, 50, 900, 400),    // behind the thin one
+	}
+	cases := []struct {
+		x, y int
+		want image.Rectangle
+		ok   bool
+	}{
+		{150, 150, image.Rect(100, 100, 300, 300), true},
+		{50, 50, image.Rect(0, 0, 600, 500), true},
+		{950, 750, image.Rect(900, 700, 1000, 800), true},
+		{701, 200, image.Rect(700, 100, 702, 300), false}, // too small; the window behind is not used
+		{950, 50, image.Rectangle{}, false},              // desktop
+	}
+	for _, c := range cases {
+		got, ok := windowAt(wins, c.x, c.y, b)
+		if ok != c.ok || (ok && got != c.want) {
+			t.Errorf("windowAt(%d,%d) = %v,%v, want %v,%v", c.x, c.y, got, ok, c.want, c.ok)
+		}
+	}
+}
