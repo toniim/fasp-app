@@ -71,6 +71,67 @@ func TestSetRecordingSettings(t *testing.T) {
 	}
 }
 
+// The last zone survives a restart, can be cleared, and a settings file from
+// before it existed loads with no zone.
+func TestLastZoneRoundTrip(t *testing.T) {
+	if old := newTestService(t, `{"default_format":"jpeg"}`); old.settings.LastZone != nil {
+		t.Fatalf("old settings file should have no last zone, got %+v", old.settings.LastZone)
+	}
+
+	s := newTestService(t, "")
+	zone := &model.ZoneMemory{
+		DisplayX: -1440, DisplayY: 0, DisplayWidth: 1440, DisplayHeight: 900,
+		X: 10.5, Y: 20, Width: 300.5, Height: 200,
+	}
+	if err := s.Set("last_zone", zone); err != nil {
+		t.Fatal(err)
+	}
+	zone.X = 999 // the stored zone is a copy
+	if err := s.Set("last_zone", "not a zone"); err == nil {
+		t.Error("last_zone must be a zone")
+	}
+
+	reloaded := newTestService(t, "")
+	reloaded.filePath = s.filePath
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	got := reloaded.settings.LastZone
+	if got == nil || got.DisplayX != -1440 || got.X != 10.5 || got.Width != 300.5 || got.Height != 200 {
+		t.Fatalf("last zone not persisted: %+v", got)
+	}
+
+	if err := s.Set("last_zone", nil); err != nil {
+		t.Fatal(err)
+	}
+	if s.settings.LastZone != nil {
+		t.Errorf("last zone not cleared: %+v", s.settings.LastZone)
+	}
+}
+
+// Uploads are public unless the user turns it off: that is what the app sent
+// before the setting existed, so an old settings file keeps it.
+func TestUploadPublicDefault(t *testing.T) {
+	old := newTestService(t, `{"default_format":"jpeg"}`)
+	if !old.settings.UploadPublic {
+		t.Error("an old settings file must keep uploads public")
+	}
+	if err := old.Set("upload_public", false); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := newTestService(t, "")
+	reloaded.filePath = old.filePath
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.settings.UploadPublic {
+		t.Error("upload_public=false was not persisted")
+	}
+	if err := old.Set("upload_public", "yes"); err == nil {
+		t.Error("upload_public must be a bool")
+	}
+}
+
 // The editor's tool settings come back from the file as the frontend wrote
 // them, nested values included; a file without them still loads.
 func TestEditorPrefsRoundTrip(t *testing.T) {

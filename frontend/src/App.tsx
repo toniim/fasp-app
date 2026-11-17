@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
-import { CaptureActiveDisplay, CaptureZone, IsRecording, OpenImageDialog, ReadImageFile, ShowWindow } from '../bindings/github.com/heytonyne/fasp/app';
+import { CaptureActiveDisplay, CaptureLastZone, CaptureZone, IsRecording, OpenImageDialog, ReadImageFile, ShowWindow } from '../bindings/github.com/heytonyne/fasp/app';
 import { useEditorStore, selectHasContent } from './store/editorStore';
 import EditorWindow from './components/EditorWindow/EditorWindow';
 import SettingsWindow from './components/SettingsWindow/SettingsWindow';
@@ -98,6 +98,10 @@ function App() {
       handleCaptureZone(false);
     });
 
+    const unsubscribeRepeatZone = Events.On('hotkey:repeat_zone', () => {
+      handleRepeatZone();
+    });
+
     const unsubscribeOpenRecord = Events.On('open:record', () => {
       setRecordingDone(null);
       setShowRecordDialog(true);
@@ -131,6 +135,7 @@ function App() {
 
     return () => {
       if (unsubscribeZone) unsubscribeZone();
+      if (unsubscribeRepeatZone) unsubscribeRepeatZone();
       if (unsubscribeOpenRecord) unsubscribeOpenRecord();
       if (unsubscribeRecStarted) unsubscribeRecStarted();
       if (unsubscribeRecFinished) unsubscribeRecFinished();
@@ -204,6 +209,27 @@ function App() {
       console.error('Failed to capture zone:', error);
       ShowWindow();
       setToast({ message: `Failed to capture zone: ${error}`, type: 'error' });
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
+  // Capture the last zone again without the overlay. Like the hotkey capture it
+  // leaves Fasp's window as it is. When there is no zone to repeat, or its
+  // display is gone, the reason shows as a toast.
+  const handleRepeatZone = async () => {
+    if (recordingRef.current) return;
+    try {
+      setIsCapturing(true);
+      const result = await CaptureLastZone();
+      if (!result) throw new Error('the capture returned no image');
+      ShowWindow();
+      setVideo(null);
+      await setImage(result.data, 'select');
+    } catch (error) {
+      console.error('Failed to repeat the last zone:', error);
+      ShowWindow();
+      setToast({ message: `Repeat Last Zone: ${error instanceof Error ? error.message : String(error)}`, type: 'error' });
     } finally {
       setIsCapturing(false);
     }

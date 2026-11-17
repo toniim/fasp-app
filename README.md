@@ -87,6 +87,14 @@ Because the picture is taken the moment you press the hotkey, you can grab thing
 - With several displays, the display under the mouse freezes.
 - If the editor already holds a shot, the new zone replaces it. To keep the current shot and add another one next to it, use **Add screenshot** in the editor instead (see [Several images on one canvas](#several-images-on-one-canvas)).
 
+### Repeat the last zone
+
+**Repeat Last Zone** (tray menu, or a hotkey you set in Settings; there is none by default) captures the area you picked last in Capture Zone again, straight away and without the overlay, and opens it in the editor with the same pixel size. Fasp remembers the zone and its display across restarts. If that display is gone or has another resolution, nothing is captured and a message says so.
+
+### Delayed capture
+
+The tray menu has **Delayed Capture** with **Capture in 3 / 5 / 10 s** and **Capture Zone in 3 / 5 / 10 s**. The seconds left show next to the tray icon (macOS) or in its tooltip (Windows), so they are never in the picture. The screen is captured when the countdown ends; for a zone, the overlay then freezes the screen. To cancel, press `Esc` (a global key, held only while counting), choose **Cancel Countdown** in the tray menu, or choose a delayed item again.
+
 ### Record the screen
 
 Press the **Start / stop recording** hotkey (or **File → Record Screen…**, or the tray menu) and choose:
@@ -198,8 +206,10 @@ Click **Backdrop** in the toolbar to put the shot on a background before you sha
 | Quick Save | `Ctrl+S` | Saves to the default folder (`Pictures\Fasp` unless set in Settings) |
 | Save As | `Ctrl+Shift+S` | Choose a file name and format (PNG or JPEG) |
 | Copy | `Ctrl+C` | Puts the annotated image on the clipboard |
-| Upload | | Uploads to your fasp server and copies the link (see Settings) |
+| Upload | | Uploads to your fasp server and copies the link (see Settings). The arrow next to it uploads this one time as **Public** or **Private** |
 | | `Ctrl+Shift+C` | Cancels a crop, or hides the editor |
+
+**Public or private.** The fasp server knows two states for a file. A public link opens for anyone who has it; a private link opens only for you, the owner. The **Upload as public** setting (on by default) picks what the Upload button does, and the arrow menu overrides it for one upload. After an upload, the message says whether the link is public or private. The server has no password, expiry date or view limit, so Fasp has none either.
 
 > On Windows, `Ctrl+Shift+S` is also the default second capture hotkey, which is global and wins: in the editor it starts a new capture instead of Save As. Use the **Save As** button, or change that hotkey in `settings.json` (`hotkeys.capture_region`).
 
@@ -207,7 +217,7 @@ On macOS, use `Cmd` in place of `Ctrl` for the editor shortcuts.
 
 ### Tray menu
 
-Capture Screenshot, Capture Zone, Record Screen / Stop Recording, Open Image…, **Recents** (your latest saved screenshots and recordings, and their folder), Show/Hide Window, Settings… and Quit.
+Capture Screenshot, Capture Zone, **Repeat Last Zone**, **Delayed Capture** (see below), Record Screen / Stop Recording, Open Image…, **Recents** (your latest saved screenshots and recordings, and their folder), Show/Hide Window, Settings… and Quit.
 On Windows, closing the editor window only hides it and Fasp keeps running in the tray; use **Quit** to exit.
 
 ### Settings
@@ -216,12 +226,12 @@ Open **Settings** from the tray or with `Ctrl+,`.
 
 ![Settings window](docs/screenshots/settings.png)
 
-- **Hotkeys**: Capture Screenshot, Capture Zone and Start / Stop Recording. Click a field and press a new combination, or pick a preset. One combination can only be used once.
+- **Hotkeys**: Capture Screenshot, Capture Zone, Repeat Last Zone (no shortcut until you set one) and Start / Stop Recording. Click a field and press a new combination, or pick a preset. One combination can only be used once.
 - **Recording**: the default audio sources, microphone and frame rate (15, 30 or 60 fps) for new recordings.
 - **Account & Server**: the fasp server URL and an API key (create one in fasp under Settings → API Keys, scope `files:write`), with **Test Connection**.
 - **Run at Startup**: start Fasp when you log in.
 - **Save Options**: default folder and format for Quick Save.
-- **Upload Options**: after an upload, copy the direct URL, the public URL, Markdown image code, or nothing.
+- **Upload Options**: after an upload, copy the direct URL, the public URL, Markdown image code, or nothing. **Upload as public** sets the default visibility (on, as before).
 
 Settings are stored in `%APPDATA%\fasp\settings.json` on Windows and `~/Library/Application Support/fasp/settings.json` on macOS. The file holds your API key, so it is readable only by you.
 
@@ -285,6 +295,7 @@ internal/
     recorder/                Screen recording: Windows.Graphics.Capture + Media Foundation + WASAPI on Windows,
                              ScreenCaptureKit + AVAssetWriter + AVCaptureSession on macOS, shared audio mixer
     clipboard/               Copy and read images, copy files (Win32 clipboard, NSPasteboard)
+    countdown/               Timer behind delayed capture
     hotkey/                  Global hotkeys
     file/                    Save/open dialogs, default save folder
     recents/                 Recently saved screenshots

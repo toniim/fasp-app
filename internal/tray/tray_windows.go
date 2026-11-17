@@ -3,8 +3,10 @@
 package tray
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -14,6 +16,9 @@ import (
 // maxRecentItems is how many recents the submenu can show (Xếp: 10 last saves).
 const maxRecentItems = 10
 
+// idleTooltip is the tray tooltip when no countdown runs.
+const idleTooltip = "Fasp - Screenshot Tool"
+
 type windowsManager struct {
 	callback    Callback
 	initialized bool
@@ -21,6 +26,7 @@ type windowsManager struct {
 	quitChan    chan struct{}
 
 	mu          sync.Mutex
+	cancelItem  *systray.MenuItem
 	recents     []string
 	recentItems []*systray.MenuItem
 	recentShown []bool
@@ -60,11 +66,43 @@ func (m *windowsManager) onReady() {
 	}
 
 	systray.SetTitle("Fasp")
-	systray.SetTooltip("Fasp - Screenshot Tool")
+	systray.SetTooltip(idleTooltip)
 
 	// Create menu items
 	mCapture := systray.AddMenuItem("Capture Screenshot", "Take a screenshot")
 	mCaptureZone := systray.AddMenuItem("Capture Zone", "Freeze the screen and drag the area to capture")
+	mRepeatZone := systray.AddMenuItem("Repeat Last Zone", "Capture the last zone again, without the overlay")
+
+	// Delayed capture: the screen, then the zone overlay, after a countdown.
+	mDelayed := systray.AddMenuItem("Delayed Capture", "Capture after a countdown")
+	type delayItem struct {
+		item    *systray.MenuItem
+		action  Action
+		seconds int
+	}
+	var delays []delayItem
+	for _, s := range DelayChoices {
+		delays = append(delays, delayItem{
+			mDelayed.AddSubMenuItem(fmt.Sprintf("Capture in %d s", s), "Capture the screen after the countdown"),
+			ActionCaptureDelayed, s,
+		})
+	}
+	// systray has no separator API for submenus, so use a disabled rule line.
+	mDelayedRule := mDelayed.AddSubMenuItem(strings.Repeat("─", 18), "")
+	mDelayedRule.Disable()
+	for _, s := range DelayChoices {
+		delays = append(delays, delayItem{
+			mDelayed.AddSubMenuItem(fmt.Sprintf("Capture Zone in %d s", s), "Freeze the screen for a zone after the countdown"),
+			ActionCaptureZoneDelayed, s,
+		})
+	}
+	// Shown only while a countdown runs.
+	mCancel := systray.AddMenuItem("Cancel Countdown", "Cancel the capture countdown")
+	mCancel.Hide()
+	m.mu.Lock()
+	m.cancelItem = mCancel
+	m.mu.Unlock()
+
 	mRecord := systray.AddMenuItem("Record Screen / Stop Recording", "Start a screen recording, or stop the running one")
 	mOpenImage := systray.AddMenuItem("Open Image...", "Open an image for annotation")
 	systray.AddSeparator()
@@ -114,6 +152,19 @@ func (m *windowsManager) onReady() {
 		}(idx, item)
 	}
 
+	for _, d := range delays {
+		go func(d delayItem) {
+			for {
+				select {
+				case <-d.item.ClickedCh:
+					m.emit(d.action, strconv.Itoa(d.seconds))
+				case <-m.quitChan:
+					return
+				}
+			}
+		}(d)
+	}
+
 	// Handle menu clicks
 	go func() {
 		for {
@@ -122,6 +173,10 @@ func (m *windowsManager) onReady() {
 				m.emit(ActionCapture, "")
 			case <-mCaptureZone.ClickedCh:
 				m.emit(ActionCaptureZone, "")
+			case <-mRepeatZone.ClickedCh:
+				m.emit(ActionRepeatZone, "")
+			case <-mCancel.ClickedCh:
+				m.emit(ActionCancelCountdown, "")
 			case <-mRecord.ClickedCh:
 				m.emit(ActionRecord, "")
 			case <-mOpenImage.ClickedCh:
@@ -144,6 +199,26 @@ func (m *windowsManager) onReady() {
 			}
 		}
 	}()
+}
+
+// SetCountdown shows the seconds left in the tray tooltip (the Windows tray has
+// no title next to the icon) and in the "Cancel Countdown" item; 0 clears them.
+func (m *windowsManager) SetCountdown(remaining int) {
+	m.mu.Lock()
+	item := m.cancelItem
+	m.mu.Unlock()
+	if item == nil {
+		return
+	}
+	if remaining > 0 {
+		text := fmt.Sprintf("Capturing in %d s", remaining)
+		systray.SetTooltip("Fasp - " + text)
+		item.SetTitle(fmt.Sprintf("Cancel Countdown (%d s)", remaining))
+		item.Show()
+		return
+	}
+	systray.SetTooltip(idleTooltip)
+	item.Hide()
 }
 
 func (m *windowsManager) onExit() {

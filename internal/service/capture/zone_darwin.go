@@ -88,22 +88,32 @@ func selectFrozenZone(wantImage bool) (*frozenZone, error) {
 // CaptureZone freezes the display under the cursor and returns the zone the
 // user selects on it, cropped at pixel resolution with the display's colour
 // profile, like a full screenshot.
-func (s *serviceImpl) CaptureZone() (*model.CaptureResult, error) {
+func (s *serviceImpl) CaptureZone() (*model.CaptureResult, *model.ZoneMemory, error) {
 	z, err := selectFrozenZone(true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer z.release()
 
 	sx, sy := z.scale()
-	r := zonePixelRect(z.sel, sx, sy, z.img)
+	res, err := cropZone(z.image, zonePixelRect(z.sel, sx, sy, z.img))
+	if err != nil {
+		return nil, nil, err
+	}
+	display := pointRect{z.boundsX, z.boundsY, z.boundsW, z.boundsH}
+	return res, remember(display, z.sel), nil
+}
+
+// cropZone crops the pixel rectangle r out of a display screenshot and encodes
+// it as PNG with the display's colour profile.
+func cropZone(screenshot C.CGImageRef, r image.Rectangle) (*model.CaptureResult, error) {
 	if !zoneLargeEnough(r) {
 		return nil, errors.New("selected zone is too small")
 	}
 	var out unsafe.Pointer
 	var n C.int
 	var cerr *C.char
-	if C.fasp_crop_png(z.image, C.int(r.Min.X), C.int(r.Min.Y), C.int(r.Dx()), C.int(r.Dy()), &out, &n, &cerr) != 0 {
+	if C.fasp_crop_png(screenshot, C.int(r.Min.X), C.int(r.Min.Y), C.int(r.Dx()), C.int(r.Dy()), &out, &n, &cerr) != 0 {
 		msg := "unknown error"
 		if cerr != nil {
 			msg = C.GoString(cerr)
@@ -118,6 +128,47 @@ func (s *serviceImpl) CaptureZone() (*model.CaptureResult, error) {
 		Height:    r.Dy(),
 		Timestamp: time.Now(),
 	}, nil
+}
+
+// CaptureZoneRect captures a remembered zone without the overlay: the display
+// is found by its bounds, captured, and the zone is cropped from it exactly as
+// the overlay path does, so the result has the same pixel size.
+func (s *serviceImpl) CaptureZoneRect(zone model.ZoneMemory) (*model.CaptureResult, error) {
+	var list [16]C.fasp_display
+	n := int(C.fasp_list_displays(&list[0], C.int(len(list))))
+	bounds := make([]pointRect, n)
+	for i := 0; i < n; i++ {
+		bounds[i] = pointRect{float64(list[i].x), float64(list[i].y), float64(list[i].w), float64(list[i].h)}
+	}
+	idx, err := resolveZone(zone, bounds)
+	if err != nil {
+		return nil, err
+	}
+
+	var shot C.CGImageRef
+	var cerr *C.char
+	if C.fasp_capture_display_image(C.CGDirectDisplayID(list[idx].id), &shot, &cerr) != 0 {
+		msg := "unknown error"
+		if cerr != nil {
+			msg = C.GoString(cerr)
+			C.free(unsafe.Pointer(cerr))
+		}
+		return nil, fmt.Errorf("failed to capture screenshot: %s", msg)
+	}
+	defer C.fasp_release_image(shot)
+
+	img := image.Rect(0, 0, int(C.CGImageGetWidth(shot)), int(C.CGImageGetHeight(shot)))
+	d := bounds[idx]
+	if d.W <= 0 || d.H <= 0 || img.Empty() {
+		return nil, errors.New("failed to capture screenshot: invalid display geometry")
+	}
+	sx, sy := float64(img.Dx())/d.W, float64(img.Dy())/d.H
+	sel := pointRect{zone.X, zone.Y, zone.Width, zone.Height}
+	r := zonePixelRect(sel, sx, sy, img)
+	if !zoneLargeEnough(r) {
+		return nil, ErrZoneUnavailable
+	}
+	return cropZone(shot, r)
 }
 
 // SelectRegion shows the same overlay and returns the zone in global Quartz

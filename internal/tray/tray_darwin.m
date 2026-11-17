@@ -4,6 +4,10 @@
 // Forward declarations for Go callbacks
 extern void tray_onCapture(void);
 extern void tray_onCaptureZone(void);
+extern void tray_onCaptureDelayed(int seconds);
+extern void tray_onCaptureZoneDelayed(int seconds);
+extern void tray_onRepeatZone(void);
+extern void tray_onCancelCountdown(void);
 extern void tray_onRecord(void);
 extern void tray_onOpenImage(void);
 extern void tray_onShow(void);
@@ -16,6 +20,15 @@ extern void tray_onOpenRecentsFolder(void);
 
 static NSStatusItem *statusItem = nil;
 
+// Shown only while a capture countdown runs.
+static NSMenuItem *cancelCountdownItem = nil;
+// A countdown value that arrived before the menu existed (0 = none).
+static int pendingCountdown = 0;
+
+// Delays offered for delayed capture; keep in step with tray.DelayChoices.
+static const int kDelayChoices[] = {3, 5, 10};
+static const int kDelayChoiceCount = 3;
+
 // Recents submenu state (created once, updated in place)
 static NSMenu *recentsMenu = nil;
 static NSMutableArray<NSMenuItem *> *recentItems = nil;
@@ -25,6 +38,7 @@ static NSArray<NSString *> *pendingRecents = nil;
 
 // Defined below; used by create_status_item to apply a pending list.
 static void update_recents(NSArray<NSString *> *paths);
+static void apply_countdown(int remaining);
 
 @interface TrayDelegate : NSObject
 @end
@@ -37,6 +51,23 @@ static void update_recents(NSArray<NSString *> *paths);
 
 - (void)onCaptureZone:(id)sender {
     tray_onCaptureZone();
+}
+
+// The delay items carry their seconds in the tag.
+- (void)onCaptureDelayed:(id)sender {
+    tray_onCaptureDelayed((int)((NSMenuItem *)sender).tag);
+}
+
+- (void)onCaptureZoneDelayed:(id)sender {
+    tray_onCaptureZoneDelayed((int)((NSMenuItem *)sender).tag);
+}
+
+- (void)onRepeatZone:(id)sender {
+    tray_onRepeatZone();
+}
+
+- (void)onCancelCountdown:(id)sender {
+    tray_onCancelCountdown();
 }
 
 - (void)onRecord:(id)sender {
@@ -117,7 +148,15 @@ static void create_status_item(void) {
         // Create menu
         NSMenu *menu = [[NSMenu alloc] init];
 
-        NSMenuItem *captureItem = [[NSMenuItem alloc] initWithTitle:@"Capture Screenshot"
+        // Hidden until a countdown runs.
+        cancelCountdownItem = [[NSMenuItem alloc] initWithTitle:@"Cancel Countdown"
+                                                         action:@selector(onCancelCountdown:)
+                                                  keyEquivalent:@""];
+        cancelCountdownItem.target = delegate;
+        cancelCountdownItem.hidden = YES;
+        [menu addItem:cancelCountdownItem];
+
+        NSMenuItem *captureItem =[[NSMenuItem alloc] initWithTitle:@"Capture Screenshot"
                                                              action:@selector(onCapture:)
                                                       keyEquivalent:@""];
         captureItem.target = delegate;
@@ -128,6 +167,39 @@ static void create_status_item(void) {
                                                    keyEquivalent:@""];
         zoneItem.target = delegate;
         [menu addItem:zoneItem];
+
+        NSMenuItem *repeatZoneItem = [[NSMenuItem alloc] initWithTitle:@"Repeat Last Zone"
+                                                                action:@selector(onRepeatZone:)
+                                                         keyEquivalent:@""];
+        repeatZoneItem.target = delegate;
+        [menu addItem:repeatZoneItem];
+
+        // Delayed capture: the screen, then the zone overlay, after 3, 5 or 10 s.
+        NSMenuItem *delayedItem = [[NSMenuItem alloc] initWithTitle:@"Delayed Capture"
+                                                             action:nil
+                                                      keyEquivalent:@""];
+        NSMenu *delayedMenu = [[NSMenu alloc] initWithTitle:@"Delayed Capture"];
+        for (int i = 0; i < kDelayChoiceCount; i++) {
+            NSMenuItem *item = [[NSMenuItem alloc]
+                initWithTitle:[NSString stringWithFormat:@"Capture in %d s", kDelayChoices[i]]
+                       action:@selector(onCaptureDelayed:)
+                keyEquivalent:@""];
+            item.target = delegate;
+            item.tag = kDelayChoices[i];
+            [delayedMenu addItem:item];
+        }
+        [delayedMenu addItem:[NSMenuItem separatorItem]];
+        for (int i = 0; i < kDelayChoiceCount; i++) {
+            NSMenuItem *item = [[NSMenuItem alloc]
+                initWithTitle:[NSString stringWithFormat:@"Capture Zone in %d s", kDelayChoices[i]]
+                       action:@selector(onCaptureZoneDelayed:)
+                keyEquivalent:@""];
+            item.target = delegate;
+            item.tag = kDelayChoices[i];
+            [delayedMenu addItem:item];
+        }
+        delayedItem.submenu = delayedMenu;
+        [menu addItem:delayedItem];
 
         NSMenuItem *recordItem = [[NSMenuItem alloc] initWithTitle:@"Record Screen / Stop Recording"
                                                             action:@selector(onRecord:)
@@ -205,6 +277,9 @@ static void create_status_item(void) {
         if (pendingRecents != nil) {
             update_recents(pendingRecents);
             pendingRecents = nil;
+        }
+        if (pendingCountdown > 0) {
+            apply_countdown(pendingCountdown);
         }
 
         NSLog(@"[Fasp] Tray icon created successfully!");
@@ -371,6 +446,33 @@ void tray_set_recents(char **paths, int count) {
             return;
         }
         update_recents(list);
+    });
+}
+
+// apply_countdown runs on the main thread. The seconds go in the status item
+// title next to the icon, and the cancel item shows the same number.
+static void apply_countdown(int remaining) {
+    if (statusItem == nil) return;
+    if (remaining > 0) {
+        statusItem.button.imagePosition = NSImageLeft;
+        statusItem.button.title = [NSString stringWithFormat:@" %d", remaining];
+        cancelCountdownItem.title = [NSString stringWithFormat:@"Cancel Countdown (%d s)", remaining];
+        cancelCountdownItem.hidden = NO;
+    } else {
+        statusItem.button.title = @"";
+        cancelCountdownItem.hidden = YES;
+    }
+}
+
+void tray_set_countdown(int remaining) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (statusItem == nil) {
+            // The menu is still being created; keep the value for it.
+            pendingCountdown = remaining;
+            return;
+        }
+        pendingCountdown = 0;
+        apply_countdown(remaining);
     });
 }
 

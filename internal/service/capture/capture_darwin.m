@@ -37,14 +37,42 @@ static char *copyError(NSString *what, NSError *err) {
     return copyMessage([NSString stringWithFormat:@"%@: %@", what, err.localizedDescription]);
 }
 
+// fasp_list_displays fills out with the active displays and returns how many
+// there are (at most max). Bounds are global Quartz points, top-left origin.
+int fasp_list_displays(fasp_display *out, int max) {
+    CGDirectDisplayID ids[16];
+    uint32_t n = 0;
+    if (CGGetActiveDisplayList(16, ids, &n) != kCGErrorSuccess) return 0;
+    int count = 0;
+    for (uint32_t i = 0; i < n && count < max; i++) {
+        CGRect b = CGDisplayBounds(ids[i]);
+        out[count].id = ids[i];
+        out[count].x = b.origin.x;
+        out[count].y = b.origin.y;
+        out[count].w = b.size.width;
+        out[count].h = b.size.height;
+        count++;
+    }
+    return count;
+}
+
 // fasp_capture_cursor_image captures the display under the cursor at its
 // physical pixel size, without the cursor. On success it returns 0, sets
 // *outImage (+1 retained, caller releases) and *outDisplay. On failure it
 // returns -1 and sets *errOut (malloc'd).
 int fasp_capture_cursor_image(CGImageRef *outImage, CGDirectDisplayID *outDisplay, char **errOut) {
-    @autoreleasepool {
-        CGDirectDisplayID displayID = cursorDisplayID();
+    CGDirectDisplayID displayID = cursorDisplayID();
+    if (fasp_capture_display_image(displayID, outImage, errOut) != 0) return -1;
+    *outDisplay = displayID;
+    return 0;
+}
 
+// fasp_capture_display_image captures one display at its physical pixel size,
+// without the cursor. A display that is no longer listed falls back to the
+// first one, like the cursor capture does. Returns 0 with *outImage (+1
+// retained, caller releases), or -1 with *errOut (malloc'd).
+int fasp_capture_display_image(CGDirectDisplayID displayID, CGImageRef *outImage, char **errOut) {
+    @autoreleasepool {
         // 1. Find the SCDisplay for that display.
         __block SCShareableContent *content = nil;
         __block NSError *contentErr = nil;
@@ -114,7 +142,6 @@ int fasp_capture_cursor_image(CGImageRef *outImage, CGDirectDisplayID *outDispla
             return -1;
         }
         *outImage = image;
-        *outDisplay = displayID;
         return 0;
     }
 }

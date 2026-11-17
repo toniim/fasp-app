@@ -461,10 +461,51 @@ func (o *zoneOverlay) badge(dc uintptr, text string, x, y int, above bool) {
 
 // CaptureZone freezes the monitor under the cursor and returns the zone the
 // user selects on it.
-func (s *serviceImpl) CaptureZone() (*model.CaptureResult, error) {
-	pix, w, _, r, _, err := freezeAndSelect()
+func (s *serviceImpl) CaptureZone() (*model.CaptureResult, *model.ZoneMemory, error) {
+	pix, w, _, r, mr, err := freezeAndSelect()
+	if err != nil {
+		return nil, nil, err
+	}
+	res, err := encodeResult(cropBGRA(pix, w, r), r.Dx(), r.Dy())
+	if err != nil {
+		return nil, nil, err
+	}
+	return res, remember(monitorBounds(mr), rectToPoints(r)), nil
+}
+
+// monitorBounds is a monitor rectangle in virtual-screen pixels as a pointRect.
+func monitorBounds(mr rect) pointRect {
+	return pointRect{float64(mr.Left), float64(mr.Top), float64(mr.Right - mr.Left), float64(mr.Bottom - mr.Top)}
+}
+
+func rectToPoints(r image.Rectangle) pointRect {
+	return pointRect{float64(r.Min.X), float64(r.Min.Y), float64(r.Dx()), float64(r.Dy())}
+}
+
+// CaptureZoneRect captures a remembered zone without the overlay. The monitor
+// is found by its rectangle among the live monitors, captured, and the zone is
+// cropped from it, as the overlay path does.
+func (s *serviceImpl) CaptureZoneRect(zone model.ZoneMemory) (*model.CaptureResult, error) {
+	mons, err := monitorRects()
 	if err != nil {
 		return nil, err
+	}
+	bounds := make([]pointRect, len(mons))
+	for i, mr := range mons {
+		bounds[i] = monitorBounds(mr)
+	}
+	idx, err := resolveZone(zone, bounds)
+	if err != nil {
+		return nil, err
+	}
+	pix, w, h, err := captureRect(mons[idx])
+	if err != nil {
+		return nil, fmt.Errorf("failed to capture screenshot: %w", err)
+	}
+	r := image.Rect(int(zone.X), int(zone.Y), int(zone.X+zone.Width), int(zone.Y+zone.Height)).
+		Intersect(image.Rect(0, 0, w, h))
+	if !zoneLargeEnough(r) {
+		return nil, ErrZoneUnavailable
 	}
 	return encodeResult(cropBGRA(pix, w, r), r.Dx(), r.Dy())
 }

@@ -92,6 +92,10 @@ func (s *serviceImpl) Get(key string) (interface{}, error) {
 		return s.settings.WindowHeight, nil
 	case "editor_prefs":
 		return s.settings.EditorPrefs, nil
+	case "last_zone":
+		return s.settings.LastZone, nil
+	case "upload_public":
+		return s.settings.UploadPublic, nil
 	default:
 		return nil, fmt.Errorf("unknown setting key: %s", key)
 	}
@@ -213,6 +217,30 @@ func (s *serviceImpl) Set(key string, value interface{}) error {
 			s.settings.EditorPrefs = v
 		} else {
 			return fmt.Errorf("invalid type for editor_prefs")
+		}
+	case "last_zone":
+		// Written by the app after a Capture Zone, never by the frontend. A copy
+		// is stored so the caller cannot change it afterwards.
+		switch v := value.(type) {
+		case nil:
+			s.settings.LastZone = nil
+		case *model.ZoneMemory:
+			if v == nil {
+				s.settings.LastZone = nil
+			} else {
+				z := *v
+				s.settings.LastZone = &z
+			}
+		case model.ZoneMemory:
+			s.settings.LastZone = &v
+		default:
+			return fmt.Errorf("invalid type for last_zone")
+		}
+	case "upload_public":
+		if v, ok := value.(bool); ok {
+			s.settings.UploadPublic = v
+		} else {
+			return fmt.Errorf("invalid type for upload_public")
 		}
 	default:
 		return fmt.Errorf("unknown setting key: %s", key)

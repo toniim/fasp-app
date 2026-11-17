@@ -24,7 +24,19 @@ const (
 	ActionCaptureZone
 	// ActionRecord opens the record dialog, or stops the running recording
 	ActionRecord
+	// ActionCaptureDelayed captures the screen after a countdown (arg = seconds)
+	ActionCaptureDelayed
+	// ActionCaptureZoneDelayed freezes the screen for a zone after a countdown
+	// (arg = seconds)
+	ActionCaptureZoneDelayed
+	// ActionRepeatZone captures the last zone again without the overlay
+	ActionRepeatZone
+	// ActionCancelCountdown cancels a running capture countdown
+	ActionCancelCountdown
 )
+
+// DelayChoices are the delays, in seconds, the tray offers for delayed capture.
+var DelayChoices = []int{3, 5, 10}
 
 // Callback is the function type for tray action callbacks. arg carries the
 // payload for actions that need one (recent file path, folder) and is empty
@@ -41,6 +53,11 @@ type Manager interface {
 	SetIconFromFile(iconPath string) error
 	// SetRecents refreshes the "Recents" submenu, most recent path first
 	SetRecents(paths []string) error
+	// SetCountdown shows the seconds left of a capture countdown on the tray
+	// (menu bar title on macOS, tooltip on Windows) and offers "Cancel
+	// Countdown" in the menu. 0 clears both. It is not part of any picture the
+	// capture takes: the caller clears it before capturing.
+	SetCountdown(remaining int)
 	// Quit cleans up tray resources
 	Quit()
 }

@@ -111,6 +111,18 @@ export interface Settings {
      * editor option needs no change here. Nil when never saved.
      */
     "editor_prefs"?: { [_ in string]?: any } | null;
+
+    /**
+     * LastZone is the last zone picked in Capture Zone; nil until one was.
+     */
+    "last_zone"?: ZoneMemory | null;
+
+    /**
+     * UploadPublic is the default visibility of an upload. The server only has
+     * public or private files; there is no password or expiry. New and old
+     * settings files default to true, which is what the app always sent.
+     */
+    "upload_public": boolean;
 }
 
 /**
@@ -121,4 +133,30 @@ export interface UploadProvider {
     "enabled": boolean;
     "endpoint": string;
     "headers": { [_ in string]?: string } | null;
+}
+
+/**
+ * ZoneMemory is a zone picked in Capture Zone, kept so "Repeat Last Zone" can
+ * capture the same rectangle again without the overlay. Every value is in the
+ * units the capture service works in: points on macOS, physical pixels on
+ * Windows. The display is stored by its bounds, not by an OS id, because ids
+ * are not stable across restarts or replugging. The zone can be fractional on
+ * a Retina display, so these are floats.
+ */
+export interface ZoneMemory {
+    /**
+     * Display bounds in global desktop coordinates (top-left origin).
+     */
+    "display_x": number;
+    "display_y": number;
+    "display_width": number;
+    "display_height": number;
+
+    /**
+     * The zone, relative to the top-left corner of that display.
+     */
+    "x": number;
+    "y": number;
+    "width": number;
+    "height": number;
 }

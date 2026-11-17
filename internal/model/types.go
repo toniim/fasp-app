@@ -39,6 +39,25 @@ type CropRegion struct {
 	Height int `json:"height"`
 }
 
+// ZoneMemory is a zone picked in Capture Zone, kept so "Repeat Last Zone" can
+// capture the same rectangle again without the overlay. Every value is in the
+// units the capture service works in: points on macOS, physical pixels on
+// Windows. The display is stored by its bounds, not by an OS id, because ids
+// are not stable across restarts or replugging. The zone can be fractional on
+// a Retina display, so these are floats.
+type ZoneMemory struct {
+	// Display bounds in global desktop coordinates (top-left origin).
+	DisplayX      float64 `json:"display_x"`
+	DisplayY      float64 `json:"display_y"`
+	DisplayWidth  float64 `json:"display_width"`
+	DisplayHeight float64 `json:"display_height"`
+	// The zone, relative to the top-left corner of that display.
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
 // SaveOptions contains options for saving an image
 type SaveOptions struct {
 	Path    string `json:"path"`
@@ -93,6 +112,14 @@ type Settings struct {
 	// mode, ...). The frontend owns its shape: it is kept as written, so a new
 	// editor option needs no change here. Nil when never saved.
 	EditorPrefs map[string]interface{} `json:"editor_prefs,omitempty"`
+
+	// LastZone is the last zone picked in Capture Zone; nil until one was.
+	LastZone *ZoneMemory `json:"last_zone,omitempty"`
+
+	// UploadPublic is the default visibility of an upload. The server only has
+	// public or private files; there is no password or expiry. New and old
+	// settings files default to true, which is what the app always sent.
+	UploadPublic bool `json:"upload_public"`
 }
 
 // DefaultSettings returns default application settings
@@ -134,5 +161,6 @@ func DefaultSettings() *Settings {
 		APIKey:            "",
 		RecordSystemAudio: true,
 		RecordFPS:         30,
+		UploadPublic:      true,
 	}
 }

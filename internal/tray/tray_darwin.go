@@ -10,6 +10,7 @@ package tray
 */
 import "C"
 import (
+	"strconv"
 	"unsafe"
 )
 
@@ -86,6 +87,15 @@ func (m *darwinManager) SetRecents(paths []string) error {
 	return nil
 }
 
+// SetCountdown shows the seconds left in the menu bar and the "Cancel
+// Countdown" item; 0 clears them.
+func (m *darwinManager) SetCountdown(remaining int) {
+	if !m.initialized {
+		return
+	}
+	C.tray_set_countdown(C.int(remaining))
+}
+
 func (m *darwinManager) Quit() {
 	if !m.initialized {
 		return
@@ -106,6 +116,34 @@ func tray_onCapture() {
 func tray_onCaptureZone() {
 	if globalCallback != nil {
 		go globalCallback(ActionCaptureZone, "")
+	}
+}
+
+//export tray_onCaptureDelayed
+func tray_onCaptureDelayed(seconds C.int) {
+	if globalCallback != nil {
+		go globalCallback(ActionCaptureDelayed, strconv.Itoa(int(seconds)))
+	}
+}
+
+//export tray_onCaptureZoneDelayed
+func tray_onCaptureZoneDelayed(seconds C.int) {
+	if globalCallback != nil {
+		go globalCallback(ActionCaptureZoneDelayed, strconv.Itoa(int(seconds)))
+	}
+}
+
+//export tray_onRepeatZone
+func tray_onRepeatZone() {
+	if globalCallback != nil {
+		go globalCallback(ActionRepeatZone, "")
+	}
+}
+
+//export tray_onCancelCountdown
+func tray_onCancelCountdown() {
+	if globalCallback != nil {
+		go globalCallback(ActionCancelCountdown, "")
 	}
 }
 

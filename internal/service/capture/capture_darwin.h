@@ -9,6 +9,18 @@ int fasp_capture_cursor_display(void **out, int *outLen, int *width, int *height
 // releases); *errOut is malloc'd on failure.
 int fasp_capture_cursor_image(CGImageRef *outImage, CGDirectDisplayID *outDisplay, char **errOut);
 
+// Captures one display by id (+1 retained image; *errOut malloc'd on failure).
+int fasp_capture_display_image(CGDirectDisplayID displayID, CGImageRef *outImage, char **errOut);
+
+typedef struct {
+    unsigned int id;
+    // Global Quartz points, top-left origin.
+    double x, y, w, h;
+} fasp_display;
+
+// Lists the active displays; returns how many were written (at most max).
+int fasp_list_displays(fasp_display *out, int max);
+
 typedef struct {
     // Selection in points, relative to the top-left of the display.
     double selX, selY, selW, selH;

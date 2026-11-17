@@ -7,5 +7,6 @@ export type {
     DisplayInfo,
     SaveOptions,
     Settings,
-    UploadProvider
+    UploadProvider,
+    ZoneMemory
 } from "./models.js";

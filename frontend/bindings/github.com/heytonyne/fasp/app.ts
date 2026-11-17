@@ -43,6 +43,15 @@ export function CaptureFullscreen(): $CancellablePromise<model$0.CaptureResult |
 }
 
 /**
+ * CaptureLastZone captures the zone picked last in Capture Zone again, without
+ * the overlay. It returns an error (shown as a toast) when no zone was picked
+ * yet, or when its display is gone or no longer matches.
+ */
+export function CaptureLastZone(): $CancellablePromise<model$0.CaptureResult | null> {
+    return $Call.ByID(3017632111);
+}
+
+/**
  * CaptureZone freezes the display under the cursor, lets the user drag a zone
  * and returns only that zone. It returns nil (not an error) when the user
  * cancels with Esc, so the frontend can simply ignore it.
@@ -294,8 +303,9 @@ export function UploadComplete(fileID: string): $CancellablePromise<upload$0.Com
 }
 
 /**
- * UploadInit initiates a file upload
+ * UploadInit initiates a file upload. visibility is "public", "private", or
+ * "" to use the "Upload as public" setting.
  */
-export function UploadInit(filename: string, size: number, contentType: string): $CancellablePromise<upload$0.InitResponse | null> {
-    return $Call.ByID(1270331014, filename, size, contentType);
+export function UploadInit(filename: string, size: number, contentType: string, visibility: string): $CancellablePromise<upload$0.InitResponse | null> {
+    return $Call.ByID(1270331014, filename, size, contentType, visibility);
 }

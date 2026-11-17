@@ -40,6 +40,8 @@ export interface Settings {
   active_provider?: string;
   run_at_startup?: boolean;
   after_upload_action?: AfterUploadAction;
+  // Default visibility of an upload; the editor's Upload menu overrides it once.
+  upload_public?: boolean;
   server_url?: string;
   api_key?: string;
   record_system_audio?: boolean;

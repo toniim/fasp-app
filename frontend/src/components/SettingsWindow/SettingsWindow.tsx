@@ -43,6 +43,7 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
       setHotkeys({
         capture_fullscreen: data.hotkeys?.capture_fullscreen || data.hotkeys?.capture || '',
         capture_zone: data.hotkeys?.capture_zone || '',
+        repeat_zone: data.hotkeys?.repeat_zone || '',
         record: data.hotkeys?.record || '',
       });
       ListMicrophones().then((list) => setMics(list || [])).catch(() => setMics([]));
@@ -66,7 +67,7 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
 
     setIsSaving(true);
     try {
-      for (const key of ['capture_fullscreen', 'capture_zone', 'record']) {
+      for (const key of ['capture_fullscreen', 'capture_zone', 'repeat_zone', 'record']) {
         await UpdateSetting(`hotkeys.${key}`, hotkeys[key] || '');
       }
       await UpdateSetting('record_system_audio', settings.record_system_audio ?? true);
@@ -89,6 +90,8 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
       if (settings.after_upload_action) {
         await UpdateSetting('after_upload_action', settings.after_upload_action);
       }
+
+      await UpdateSetting('upload_public', settings.upload_public ?? true);
 
       // Update server URL + API key
       await UpdateSetting('server_url', settings.server_url || '');
@@ -161,6 +164,13 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
               />
             </div>
             <div className="setting-row">
+              <label className="setting-label">Repeat Last Zone</label>
+              <ShortcutField
+                value={hotkeys.repeat_zone || ''}
+                onChange={(v) => setHotkeys({ ...hotkeys, repeat_zone: v })}
+              />
+            </div>
+            <div className="setting-row">
               <label className="setting-label">Start / Stop Recording</label>
               <ShortcutField
                 value={hotkeys.record || ''}
@@ -168,8 +178,9 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
               />
             </div>
             <p className="setting-hint">
-              Capture Zone freezes the screen so you can drag the area to keep. Click an input to record a
-              shortcut, or the keyboard icon for presets.
+              Capture Zone freezes the screen so you can drag the area to keep. Repeat Last Zone captures
+              that same area again at once, without the overlay, and has no shortcut until you set one.
+              Click an input to record a shortcut, or the keyboard icon for presets.
             </p>
           </div>
         </div>
@@ -363,6 +374,26 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
                 </select>
               </div>
             </div>
+
+            <div className="setting-row">
+              <label className="setting-label">Visibility</label>
+              <div className="setting-input-checkbox">
+                <input
+                  type="checkbox"
+                  id="upload-public"
+                  checked={settings.upload_public ?? true}
+                  onChange={(e) => setSettings({ ...settings, upload_public: e.target.checked })}
+                />
+                <label htmlFor="upload-public" className="checkbox-label">
+                  Upload as public
+                </label>
+              </div>
+            </div>
+            <p className="setting-hint">
+              A public link opens for anyone who has it. A private link opens only for you, the owner.
+              The Upload menu in the editor can choose either for a single upload. Password
+              and expiry are not available.
+            </p>
           </div>
         </div>
       </div>

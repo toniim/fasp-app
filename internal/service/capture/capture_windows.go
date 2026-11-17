@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"image/png"
+	"sync"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -129,6 +131,32 @@ func captureRect(mr rect) ([]byte, int, int, error) {
 		return nil, 0, 0, errors.New("GetDIBits failed")
 	}
 	return pix, width, height, nil
+}
+
+var (
+	procEnumDisplayMonitors = user32.NewProc("EnumDisplayMonitors")
+
+	// monitorEnumMu guards monitorEnumOut, which the enumeration callback fills.
+	monitorEnumMu   sync.Mutex
+	monitorEnumOut  []rect
+	monitorEnumProc = syscall.NewCallback(func(hMonitor, _, _, _ uintptr) uintptr {
+		mi := monitorInfo{CbSize: uint32(unsafe.Sizeof(monitorInfo{}))}
+		if r, _, _ := procGetMonitorInfoW.Call(hMonitor, uintptr(unsafe.Pointer(&mi))); r != 0 {
+			monitorEnumOut = append(monitorEnumOut, mi.RcMonitor)
+		}
+		return 1 // keep enumerating
+	})
+)
+
+// monitorRects lists every monitor rectangle in physical virtual-screen pixels.
+func monitorRects() ([]rect, error) {
+	monitorEnumMu.Lock()
+	defer monitorEnumMu.Unlock()
+	monitorEnumOut = nil
+	if r, _, e := procEnumDisplayMonitors.Call(0, 0, monitorEnumProc, 0); r == 0 {
+		return nil, fmt.Errorf("EnumDisplayMonitors: %w", e)
+	}
+	return append([]rect(nil), monitorEnumOut...), nil
 }
 
 // monitorFromPoint calls MonitorFromPoint, which takes the POINT by value: on

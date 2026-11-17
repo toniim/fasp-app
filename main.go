@@ -59,6 +59,7 @@ type App struct {
 	quitting          atomic.Bool
 
 	recording recordingState
+	delayed   delayedCapture
 	media     *mediaServer
 	// recordingBar is set while the window is the small recording control
 	// bar, so its size is not saved as the editor size.
@@ -116,6 +117,22 @@ func (a *App) setupTray() {
 
 		case tray.ActionRecord:
 			a.toggleRecording()
+
+		case tray.ActionCaptureDelayed:
+			if n, ok := delayFromArg(arg); ok {
+				a.startDelayed("hotkey:capture", n)
+			}
+
+		case tray.ActionCaptureZoneDelayed:
+			if n, ok := delayFromArg(arg); ok {
+				a.startDelayed("hotkey:capture_zone", n)
+			}
+
+		case tray.ActionRepeatZone:
+			a.emit("hotkey:repeat_zone")
+
+		case tray.ActionCancelCountdown:
+			a.cancelCountdown()
 
 		case tray.ActionOpenImage:
 			// Trigger open image dialog
@@ -315,6 +332,7 @@ func (a *App) setupHotkeys() {
 	registerHotkey("capture_fullscreen", "hotkey:capture")
 	registerHotkey("capture_region", "hotkey:capture_region")
 	registerHotkey("capture_zone", "hotkey:capture_zone")
+	registerHotkey("repeat_zone", "hotkey:repeat_zone")
 	registerAction("record", a.toggleRecording)
 
 	if registered == 0 {
@@ -346,7 +364,11 @@ func (a *App) CaptureActiveDisplay() (*model.CaptureResult, error) {
 		return nil, fmt.Errorf("screen recording permission is required. Please grant permission in System Settings > Privacy & Security > Screen Recording")
 	}
 
-	return a.captureService.CaptureActiveDisplay()
+	r, err := a.captureService.CaptureActiveDisplay()
+	if err == nil {
+		println("[capture] active display captured:", r.Width, "x", r.Height)
+	}
+	return r, err
 }
 
 // GetDisplayInfo returns information about all displays
@@ -543,9 +565,10 @@ func (a *App) GetVersion() version.Info {
 
 // Upload methods
 
-// UploadInit initiates a file upload
-func (a *App) UploadInit(filename string, size int64, contentType string) (*upload.InitResponse, error) {
-	return a.uploadService.Init(filename, size, contentType)
+// UploadInit initiates a file upload. visibility is "public", "private", or
+// "" to use the "Upload as public" setting.
+func (a *App) UploadInit(filename string, size int64, contentType, visibility string) (*upload.InitResponse, error) {
+	return a.uploadService.Init(filename, size, contentType, visibility)
 }
 
 // UploadComplete completes a file upload

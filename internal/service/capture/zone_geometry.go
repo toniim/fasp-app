@@ -1,9 +1,52 @@
 package capture
 
 import (
+	"errors"
 	"image"
 	"math"
+
+	"github.com/heytonyne/fasp/internal/model"
 )
+
+// ErrZoneUnavailable is returned when a remembered zone cannot be captured
+// again: its display is gone or changed size, or the zone is not on it.
+var ErrZoneUnavailable = errors.New("the last zone is no longer on screen")
+
+// zoneEpsilon absorbs float noise when comparing remembered geometry with the
+// live one (a Retina selection can sit on half points).
+const zoneEpsilon = 0.5
+
+// remember describes a selection on a display as the zone to store.
+func remember(display, sel pointRect) *model.ZoneMemory {
+	return &model.ZoneMemory{
+		DisplayX: display.X, DisplayY: display.Y, DisplayWidth: display.W, DisplayHeight: display.H,
+		X: sel.X, Y: sel.Y, Width: sel.W, Height: sel.H,
+	}
+}
+
+// resolveZone finds the display a remembered zone belongs to among the live
+// displays (their global bounds) and returns its index. A display matches only
+// when its position and size are the same as when the zone was picked, so a
+// changed resolution or a moved display never captures a wrong area. The zone
+// must also lie inside the display and be large enough.
+func resolveZone(z model.ZoneMemory, displays []pointRect) (int, error) {
+	// The size limit is checked in pixels once the zone is mapped to the image.
+	if z.Width <= 0 || z.Height <= 0 {
+		return 0, ErrZoneUnavailable
+	}
+	for i, d := range displays {
+		if math.Abs(d.X-z.DisplayX) > zoneEpsilon || math.Abs(d.Y-z.DisplayY) > zoneEpsilon ||
+			math.Abs(d.W-z.DisplayWidth) > zoneEpsilon || math.Abs(d.H-z.DisplayHeight) > zoneEpsilon {
+			continue
+		}
+		if z.X < -zoneEpsilon || z.Y < -zoneEpsilon ||
+			z.X+z.Width > d.W+zoneEpsilon || z.Y+z.Height > d.H+zoneEpsilon {
+			return 0, ErrZoneUnavailable
+		}
+		return i, nil
+	}
+	return 0, ErrZoneUnavailable
+}
 
 // pointRect is a rectangle in points (fractional), as reported by a
 // point-based windowing system such as AppKit.
