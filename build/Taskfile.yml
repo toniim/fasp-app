@@ -1,0 +1,69 @@
+version: '3'
+
+tasks:
+  install:frontend:deps:
+    summary: Install frontend dependencies
+    run: once
+    dir: frontend
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules
+    preconditions:
+      - sh: npm version
+        msg: "npm is not installed. It comes with Node.js: https://nodejs.org/en/download/"
+    cmds:
+      - npm install
+
+  build:frontend:
+    label: build:frontend (DEV={{.DEV}})
+    summary: Build the frontend project (bindings first, then Vite)
+    # The universal macOS build runs two per-arch builds in parallel, each
+    # depending on this task. `run: once` stops them regenerating
+    # frontend/bindings while the other one's bundler reads it.
+    run: once
+    dir: frontend
+    sources:
+      - "**/*"
+      - exclude: node_modules/**/*
+    generates:
+      - dist/**/*
+    deps:
+      - task: install:frontend:deps
+      - task: generate:bindings
+    cmds:
+      - npm run {{if eq .DEV "true"}}build:dev{{else}}build{{end}} -q
+    env:
+      PRODUCTION: '{{if eq .DEV "true"}}false{{else}}true{{end}}'
+
+  generate:bindings:
+    summary: Generates the TypeScript bindings in frontend/bindings
+    run: once
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+      - exclude: frontend/**/*
+    generates:
+      - frontend/bindings/**/*
+    cmds:
+      # main.go embeds frontend/dist, so the package type-checks only when that
+      # folder exists; the generator needs it before the frontend is built.
+      - mkdir -p frontend/dist
+      - test -e frontend/dist/index.html || echo '<!doctype html>' > frontend/dist/index.html
+      - wails3 generate bindings -f '-tags production' -clean=true -ts -i -d frontend/bindings
+
+  generate:icons:
+    summary: Regenerates the macOS .icns and Windows .ico from build/appicon.png
+    dir: build
+    cmds:
+      - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
+
+  dev:frontend:
+    summary: Runs the frontend dev server (Vite)
+    deps:
+      - task: install:frontend:deps
+    dir: frontend
+    cmds:
+      - npm run dev -- --port {{.VITE_PORT}} --strictPort

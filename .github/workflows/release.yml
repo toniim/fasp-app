@@ -27,19 +27,20 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          # Wails v3 needs Go 1.26: go.mod pins the toolchain (not Go 1.27).
+          go-version-file: go.mod
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # Pinned to the version in go.mod: newer CLIs regenerate bindings that
-      # the project does not track yet.
+      # Pinned to the version in go.mod: the CLI generates the bindings the
+      # frontend imports and must match the runtime library.
       - name: Install Wails
         shell: bash
         run: |
-          go install "github.com/wailsapp/wails/v2/cmd/wails@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)"
+          go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Install NSIS
@@ -58,12 +59,14 @@ jobs:
           BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
           GIT_COMMIT=$(git rev-parse HEAD)
           echo "Building $VERSION ($GIT_COMMIT)"
-          # -webview2 download: the installer fetches & installs the WebView2
-          # runtime from Microsoft at install time if it isn't already present.
-          wails build -platform windows/amd64 -nsis -webview2 download -ldflags "\
+          # The Taskfile adds these to `go build -ldflags`.
+          export FASP_LDFLAGS="\
             -X 'github.com/heytonyne/fasp/internal/version.Version=${VERSION}' \
             -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
             -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}'"
+          # Builds fasp.exe and the NSIS installer. The installer carries the
+          # WebView2 bootstrapper and installs the runtime if it is missing.
+          wails3 package GOOS=windows GOARCH=amd64
 
       # --- Optional code signing via SignPath (free for OSS) ---
       # Skipped unless the repo variable SIGNPATH_ORGANIZATION_ID is set, so the
@@ -106,8 +109,8 @@ jobs:
   release-macos:
     runs-on: macos-latest
     env:
-      # ScreenCaptureKit screenshots need macOS 14. Wails only adds its own
-      # 10.13 target when these flags carry none.
+      # ScreenCaptureKit screenshots need macOS 14 (the Taskfile sets the same
+      # target for the app build).
       CGO_CFLAGS: -mmacosx-version-min=14.0
       CGO_LDFLAGS: -mmacosx-version-min=14.0
     steps:
@@ -117,7 +120,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          # Wails v3 needs Go 1.26: go.mod pins the toolchain (not Go 1.27).
+          go-version-file: go.mod
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -126,7 +130,7 @@ jobs:
 
       - name: Install Wails
         run: |
-          go install "github.com/wailsapp/wails/v2/cmd/wails@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)"
+          go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Build macOS app (Intel + Apple Silicon)
@@ -138,10 +142,12 @@ jobs:
           BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
           GIT_COMMIT=$(git rev-parse HEAD)
           echo "Building $VERSION ($GIT_COMMIT)"
-          wails build -platform darwin/universal -ldflags "\
+          # The Taskfile adds these to `go build -ldflags`.
+          export FASP_LDFLAGS="\
             -X 'github.com/heytonyne/fasp/internal/version.Version=${VERSION}' \
             -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
             -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}'"
+          wails3 task darwin:package:universal
 
       # Signed with the "Fasp Dev" certificate, the same one local builds use
       # (stored by scripts/upload-signing-cert.sh): macOS then keeps the Screen

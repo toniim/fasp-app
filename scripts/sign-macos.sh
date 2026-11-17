@@ -25,7 +25,7 @@ fi
 
 if [ ! -d "$APP_PATH" ]; then
     echo "Error: App not found at $APP_PATH"
-    echo "Run 'wails build' first"
+    echo "Run 'make build-darwin' (or 'wails3 package') first"
     exit 1
 fi
 

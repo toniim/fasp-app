@@ -14,12 +14,12 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            platform: darwin/universal
-            # ScreenCaptureKit screenshots need macOS 14. Wails only adds its
-            # own 10.13 target when these flags carry none.
+            build_cmd: wails3 task darwin:package:universal
+            # ScreenCaptureKit screenshots need macOS 14 (the Taskfile sets the
+            # same target for the app build; this covers `go test`).
             cgo_flags: -mmacosx-version-min=14.0
           - os: windows-latest
-            platform: windows/amd64
+            build_cmd: wails3 build GOOS=windows GOARCH=amd64
             cgo_flags: ''
 
     runs-on: ${{ matrix.os }}
@@ -31,10 +31,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Wails v3 needs Go 1.26: go.mod pins the toolchain (not Go 1.27).
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: go.mod
           cache: true
 
       - name: Set up Node
@@ -44,11 +45,11 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # Pinned to the version in go.mod: newer CLIs regenerate bindings that
-      # the project does not track yet.
+      # Pinned to the version in go.mod: the CLI generates the bindings the
+      # frontend imports and must match the runtime library.
       - name: Install Wails
         shell: bash
-        run: go install "github.com/wailsapp/wails/v2/cmd/wails@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)"
+        run: go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
 
       - name: Add Go bin to PATH
         shell: bash
@@ -66,7 +67,8 @@ jobs:
         run: go test ./...
 
       - name: Build
-        run: wails build -platform ${{ matrix.platform }}
+        shell: bash
+        run: ${{ matrix.build_cmd }}
 
       # Same packaging as the release, so a broken macOS download shows up on
       # the pull request rather than after tagging.

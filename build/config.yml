@@ -1,0 +1,44 @@
+# Build configuration for the Wails v3 CLI (wails3 dev / wails3 build).
+# `scripts/stamp-version.sh` rewrites `info.version` for releases.
+version: '3'
+
+# This information is used to generate the build assets.
+info:
+  companyName: "fasp" # The name of the company
+  productName: "fasp" # The name of the application
+  # Keep this identifier: macOS ties the Screen Recording grant to it.
+  productIdentifier: "com.wails.fasp" # The unique product identifier
+  description: "Screenshot & Annotation Tool" # The application description
+  copyright: "Copyright (c) tony" # Copyright text
+  comments: "Fast screenshots, annotation and screen recording" # Comments
+  version: "1.0.0" # The application version
+
+# Dev mode configuration
+dev_mode:
+  root_path: .
+  log_level: warn
+  debounce: 1000
+  ignore:
+    dir:
+      - .git
+      - node_modules
+      - frontend
+      - bin
+    file:
+      - .DS_Store
+      - .gitignore
+      - .gitkeep
+      - "*_test.go"
+    watched_extension:
+      - "*.go"
+      - "*.js" # Watch for changes to JS/TS files included using the //wails:include directive.
+      - "*.ts" # The frontend directory will be excluded entirely by the setting above.
+    git_ignore: true
+  executes:
+    - cmd: wails3 build DEV=true
+      type: blocking
+    - cmd: wails3 task common:dev:frontend
+      type: background
+    - cmd: wails3 task run
+      type: primary
+      exit_policy: shutdown

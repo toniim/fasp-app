@@ -2,5 +2,8 @@ build/bin
 node_modules
 frontend/dist
 
-# wails build cache: md5 of package.json on this machine
-frontend/package.json.md5
+# Windows resource files generated next to main.go while building
+*.syso
+
+# Task runner cache
+.task

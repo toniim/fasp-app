@@ -1,5 +1,5 @@
 #!/bin/bash
-# Package build/bin/fasp.app (from `wails build -platform darwin/universal`)
+# Package build/bin/fasp.app (from `wails3 task darwin:package:universal`)
 # into a zip for distribution without an Apple Developer ID.
 #
 # Usage: ./scripts/package-macos.sh [output.zip]
@@ -16,7 +16,7 @@ OUT="${1:-build/bin/fasp-macos-universal.zip}"
 BIN="$APP/Contents/MacOS/fasp"
 
 if [ ! -d "$APP" ]; then
-    echo "Error: $APP not found. Run 'wails build -platform darwin/universal' first." >&2
+    echo "Error: $APP not found. Run 'wails3 task darwin:package:universal' first." >&2
     exit 1
 fi
 

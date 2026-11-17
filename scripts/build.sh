@@ -34,13 +34,24 @@ fi
 BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
 echo -e "${YELLOW}Build Time: ${BUILD_TIME}${NC}"
 
-# Build with wails
-echo -e "${GREEN}Running wails build...${NC}"
-wails build -platform "${PLATFORM}" -ldflags "\
+# The Taskfile build tasks add these to `go build -ldflags`.
+export FASP_LDFLAGS="\
   -X 'github.com/heytonyne/fasp/internal/version.Version=${VERSION}' \
   -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
-  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}' \
-"
+  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}'"
+
+# Wails v3 needs the Go toolchain pinned in go.mod.
+GOTOOLCHAIN=$(sed -n 's/^toolchain //p' go.mod)
+export GOTOOLCHAIN
+
+# Build with wails3
+echo -e "${GREEN}Running wails3 build...${NC}"
+case "${PLATFORM}" in
+    darwin/universal) wails3 task darwin:package:universal ;;
+    darwin/arm64)     wails3 package GOOS=darwin GOARCH=arm64 ;;
+    darwin/amd64)     wails3 package GOOS=darwin GOARCH=amd64 ;;
+    *) echo "Unsupported platform: ${PLATFORM}" >&2; exit 1 ;;
+esac
 
 echo -e "${GREEN}Build complete!${NC}"
 echo -e "${YELLOW}Binary location: build/bin/fasp.app${NC}"

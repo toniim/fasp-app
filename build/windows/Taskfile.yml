@@ -1,0 +1,58 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  build:
+    summary: Builds fasp.exe. The Go code needs no C compiler, so this also cross-compiles from macOS or Linux.
+    deps:
+      - task: common:build:frontend
+        vars:
+          DEV:
+            ref: .DEV
+    cmds:
+      - task: generate:syso
+        vars:
+          ARCH: '{{.ARCH}}'
+      - go build {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
+      - cmd: powershell Remove-item *.syso
+        platforms: [windows]
+      - cmd: rm -f *.syso
+        platforms: [linux, darwin]
+    vars:
+      # FASP_LDFLAGS carries the -X flags that stamp internal/version (see Makefile).
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui {{.FASP_LDFLAGS}}"{{end}}'
+    env:
+      GOOS: windows
+      CGO_ENABLED: 0
+      GOARCH: '{{.ARCH | default "amd64"}}'
+
+  generate:syso:
+    summary: Generates the .syso resource (icon, manifest, version info) the linker embeds
+    dir: build
+    cmds:
+      - wails3 generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../wails_windows_{{.ARCH}}.syso
+    vars:
+      ARCH: '{{.ARCH | default "amd64"}}'
+
+  package:
+    summary: Creates the NSIS installer (build/bin/fasp-amd64-installer.exe); needs makensis
+    dir: build/windows/nsis
+    deps:
+      - task: build
+        vars:
+          ARCH: amd64
+    cmds:
+      # The installer starts this bootstrapper to install WebView2 when it is missing.
+      - wails3 generate webview2bootstrapper -dir "{{.ROOT_DIR}}/build/windows/nsis"
+      - |
+        {{if eq OS "windows"}}
+        makensis -DARG_WAILS_AMD64_BINARY="{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}.exe" project.nsi
+        {{else}}
+        makensis -DARG_WAILS_AMD64_BINARY="{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" project.nsi
+        {{end}}
+
+  run:
+    cmds:
+      - '{{.BIN_DIR}}/{{.APP_NAME}}.exe'

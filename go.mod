@@ -2,6 +2,8 @@ module github.com/heytonyne/fasp
 
 go 1.26.0
 
+toolchain go1.26.10
+
 require (
 	github.com/getlantern/systray v1.2.2
 	golang.design/x/hotkey v0.4.1
