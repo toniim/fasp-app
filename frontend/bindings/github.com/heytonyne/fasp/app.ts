@@ -29,6 +29,13 @@ import * as version$0 from "./internal/version/models.js";
 import * as $models from "./models.js";
 
 /**
+ * CancelMediaJob stops a running trim or GIF export.
+ */
+export function CancelMediaJob(id: string): $CancellablePromise<void> {
+    return $Call.ByID(896749740, id);
+}
+
+/**
  * CaptureActiveDisplay captures the active display
  */
 export function CaptureActiveDisplay(): $CancellablePromise<model$0.CaptureResult | null> {
@@ -49,6 +56,16 @@ export function CaptureFullscreen(): $CancellablePromise<model$0.CaptureResult |
  */
 export function CaptureLastZone(): $CancellablePromise<model$0.CaptureResult | null> {
     return $Call.ByID(3017632111);
+}
+
+/**
+ * CaptureText lets the user drag a zone (a click takes the window under the
+ * cursor), reads its text and copies it to the clipboard. The editor does not
+ * open. It reports the result with a toast when the editor is showing, else with
+ * a system notification.
+ */
+export function CaptureText(): $CancellablePromise<void> {
+    return $Call.ByID(1825127450);
 }
 
 /**
@@ -75,6 +92,13 @@ export function CheckScreenRecordingPermission(): $CancellablePromise<boolean> {
 }
 
 /**
+ * ClosePin closes a pin window and forgets its image.
+ */
+export function ClosePin(id: string): $CancellablePromise<void> {
+    return $Call.ByID(866081362, id);
+}
+
+/**
  * CopyFileToClipboard puts a file on the clipboard, ready to paste into a chat
  * app, an email or a folder.
  */
@@ -90,6 +114,29 @@ export function CopyImageToClipboard(data: string | null): $CancellablePromise<v
 }
 
 /**
+ * CopyPin copies the pinned image to the clipboard.
+ */
+export function CopyPin(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2575982955, id);
+}
+
+/**
+ * CopyText recognises the text in an exported shot (PNG bytes) and copies it to
+ * the clipboard. Lines is 0 when no text was found.
+ */
+export function CopyText(data: string | null): $CancellablePromise<$models.TextResult | null> {
+    return $Call.ByID(2798394763, data);
+}
+
+/**
+ * EstimateGIF predicts the size in bytes of the GIF StartGIFExport would write
+ * for these choices.
+ */
+export function EstimateGIF(src: string, startMs: number, endMs: number, fps: number, width: number): $CancellablePromise<number> {
+    return $Call.ByID(1578507087, src, startMs, endMs, fps, width);
+}
+
+/**
  * GenerateFilename generates a filename with timestamp
  */
 export function GenerateFilename(format: string): $CancellablePromise<string> {
@@ -101,6 +148,30 @@ export function GenerateFilename(format: string): $CancellablePromise<string> {
  */
 export function GetDisplayInfo(): $CancellablePromise<(model$0.DisplayInfo | null)[] | null> {
     return $Call.ByID(1725969363);
+}
+
+/**
+ * GetMediaJob returns the latest state of a job, or nil when it is unknown. The
+ * player asks once when it opens a job's dialog, in case the job ended before
+ * the dialog was listening for events.
+ */
+export function GetMediaJob(id: string): $CancellablePromise<$models.MediaJobEvent | null> {
+    return $Call.ByID(3173595672, id);
+}
+
+/**
+ * GetOCRLanguages lists the language tags the system OCR engine can read, for
+ * the language hint in Settings. The list is empty where the engine reports none.
+ */
+export function GetOCRLanguages(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(2879815996);
+}
+
+/**
+ * GetPinImage returns the PNG of a pin, for the pin window to draw.
+ */
+export function GetPinImage(id: string): $CancellablePromise<string | null> {
+    return $Call.ByID(409634891, id);
 }
 
 /**
@@ -183,6 +254,23 @@ export function PauseHotkeys(): $CancellablePromise<void> {
 }
 
 /**
+ * PinImage opens the image (PNG bytes) in a borderless, always-on-top window and
+ * returns the pin id. Each call opens a new pin; pins live on their own, so
+ * closing or hiding the editor does not close them.
+ */
+export function PinImage(data: string | null): $CancellablePromise<string> {
+    return $Call.ByID(308713577, data);
+}
+
+/**
+ * QuickSaveGIF saves a finished GIF into the default folder, never replacing a
+ * file that is already there, and returns the path.
+ */
+export function QuickSaveGIF(id: string, path: string): $CancellablePromise<string> {
+    return $Call.ByID(3303813653, id, path);
+}
+
+/**
  * QuickSaveImage saves image data to the configured default folder (falling
  * back to the platform default) using a timestamped filename, and returns the
  * full path that was written. The path is resolved in Go so the frontend never
@@ -207,6 +295,14 @@ export function ReadImageFile(path: string): $CancellablePromise<string> {
 }
 
 /**
+ * ReleaseMediaJob deletes the temporary output of a finished job once the
+ * player no longer needs it.
+ */
+export function ReleaseMediaJob(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2979040793, id);
+}
+
+/**
  * RequestAccessibilityPermission requests Accessibility permissions
  */
 export function RequestAccessibilityPermission(): $CancellablePromise<void> {
@@ -218,6 +314,13 @@ export function RequestAccessibilityPermission(): $CancellablePromise<void> {
  */
 export function RequestScreenRecordingPermission(): $CancellablePromise<void> {
     return $Call.ByID(3897512642);
+}
+
+/**
+ * ResetPinZoom puts a pin back to 100% (the size it opened at) around (x, y).
+ */
+export function ResetPinZoom(id: string, x: number, y: number): $CancellablePromise<void> {
+    return $Call.ByID(4126502296, id, x, y);
 }
 
 /**
@@ -235,10 +338,36 @@ export function RevealPath(path: string): $CancellablePromise<void> {
 }
 
 /**
+ * SaveGIFAs asks where to save a finished GIF and copies it there. It returns
+ * the saved path, or "" when the dialog was cancelled.
+ */
+export function SaveGIFAs(id: string, path: string): $CancellablePromise<string> {
+    return $Call.ByID(3846783634, id, path);
+}
+
+/**
  * SaveImage saves an image to disk
  */
 export function SaveImage(options: model$0.SaveOptions | null, data: string | null): $CancellablePromise<void> {
     return $Call.ByID(2781941869, options, data);
+}
+
+/**
+ * SavePinAs asks where to save the pinned image and writes it there. It returns
+ * the saved path, or "" when the dialog was cancelled.
+ */
+export function SavePinAs(id: string): $CancellablePromise<string> {
+    return $Call.ByID(3543898635, id);
+}
+
+/**
+ * SaveTrimmed asks where to save the trimmed video, then trims in the
+ * background. It returns the job id, or "" when the dialog was cancelled. A
+ * trim cannot be interrupted once it started, so cancelling lets it finish and
+ * then drops the result.
+ */
+export function SaveTrimmed(src: string, startMs: number, endMs: number): $CancellablePromise<string> {
+    return $Call.ByID(2396301010, src, startMs, endMs);
 }
 
 /**
@@ -262,6 +391,16 @@ export function SelectRecordingRegion(): $CancellablePromise<model$0.CropRegion 
  */
 export function ShowWindow(): $CancellablePromise<void> {
     return $Call.ByID(31117496);
+}
+
+/**
+ * StartGIFExport starts exporting a GIF of the chosen range in the background
+ * and returns the job id. Progress and the result arrive as "media:job" events;
+ * the finished GIF waits in a temporary file until SaveGIFAs, QuickSaveGIF or
+ * ReleaseMediaJob.
+ */
+export function StartGIFExport(src: string, startMs: number, endMs: number, fps: number, width: number): $CancellablePromise<string> {
+    return $Call.ByID(319319189, src, startMs, endMs, fps, width);
 }
 
 /**
@@ -308,4 +447,13 @@ export function UploadComplete(fileID: string): $CancellablePromise<upload$0.Com
  */
 export function UploadInit(filename: string, size: number, contentType: string, visibility: string): $CancellablePromise<upload$0.InitResponse | null> {
     return $Call.ByID(1270331014, filename, size, contentType, visibility);
+}
+
+/**
+ * ZoomPin scales a pin by factor around the point (x, y), in CSS pixels from
+ * the pin window's top-left corner, so the part of the image under the cursor
+ * stays under the cursor. The pin window is resized to match.
+ */
+export function ZoomPin(id: string, factor: number, x: number, y: number): $CancellablePromise<void> {
+    return $Call.ByID(3363242561, id, factor, x, y);
 }

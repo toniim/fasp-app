@@ -28,6 +28,7 @@ import (
 	"github.com/heytonyne/fasp/internal/version"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 )
 
 //go:embed all:frontend/dist
@@ -64,11 +65,21 @@ type App struct {
 	// recordingBar is set while the window is the small recording control
 	// bar, so its size is not saved as the editor size.
 	recordingBar atomic.Bool
+
+	// Pinned images, trim and GIF jobs, and text capture (pin, OCR, player tools).
+	pins          *pinStore
+	jobs          *mediaJobs
+	notifier      *notifications.NotificationService
+	textCapturing atomic.Bool
+	// copyTextFn replaces the system clipboard in tests.
+	copyTextFn func(string) error
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{media: newMediaServer()}
+	a := &App{media: newMediaServer(), pins: newPinStore()}
+	a.jobs = newMediaJobs(func(e MediaJobEvent) { a.emit("media:job", e) })
+	return a
 }
 
 // emit sends an event to the frontend.
@@ -236,6 +247,7 @@ func (a *App) setupTray() {
 func (a *App) shutdown() {
 	// A quit with the window open (Cmd+Q, logout) must remember its size too.
 	a.saveWindowState()
+	a.jobs.releaseAll()
 
 	// Cleanup tray
 	if a.trayManager != nil {
@@ -259,6 +271,9 @@ func (a *App) buildMenu() *application.Menu {
 	})
 	fileMenu.Add("Capture Zone").OnClick(func(_ *application.Context) {
 		a.emit("hotkey:capture_zone")
+	})
+	fileMenu.Add("Capture Text").OnClick(func(_ *application.Context) {
+		go a.CaptureText()
 	})
 	fileMenu.Add("Record Screen...").OnClick(func(_ *application.Context) {
 		a.toggleRecording()
@@ -334,6 +349,7 @@ func (a *App) setupHotkeys() {
 	registerHotkey("capture_zone", "hotkey:capture_zone")
 	registerHotkey("repeat_zone", "hotkey:repeat_zone")
 	registerAction("record", a.toggleRecording)
+	registerAction("capture_text", func() { go a.CaptureText() })
 
 	if registered == 0 {
 		println("No capture hotkey configured")
@@ -694,12 +710,15 @@ func (a *App) quitApp() {
 func main() {
 	// Create an instance of the app structure
 	fasp := NewApp()
+	// Reports a text capture when the editor is hidden.
+	fasp.notifier = notifications.New()
 
 	app := application.New(application.Options{
 		Name:        "fasp",
 		Description: "Screenshot & Annotation Tool\n\n" + version.Get().String(),
 		Services: []application.Service{
 			application.NewService(fasp),
+			application.NewService(fasp.notifier),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

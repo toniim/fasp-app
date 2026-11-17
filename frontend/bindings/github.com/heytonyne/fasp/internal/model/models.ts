@@ -106,6 +106,12 @@ export interface Settings {
     "record_fps": number;
 
     /**
+     * OCRLanguage is the language hint for text recognition, a tag from the
+     * system OCR engine (for example "en-US"). Empty means automatic.
+     */
+    "ocr_language": string;
+
+    /**
      * EditorPrefs holds the editor's tool settings (backdrop, highlight, blur
      * mode, ...). The frontend owns its shape: it is kept as written, so a new
      * editor option needs no change here. Nil when never saved.

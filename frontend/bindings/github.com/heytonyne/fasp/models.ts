@@ -6,6 +6,25 @@
 import * as model$0 from "./internal/model/models.js";
 
 /**
+ * MediaJobEvent is the payload of the "media:job" event. Total is 0 while the
+ * job cannot tell its progress (a trim); Path is the finished file.
+ */
+export interface MediaJobEvent {
+    "id": string;
+
+    /**
+     * trim | gif
+     */
+    "kind": string;
+    "state": string;
+    "done": number;
+    "total": number;
+    "path": string;
+    "size_bytes": number;
+    "error": string;
+}
+
+/**
  * RecordingRequest is what the "Record screen" dialog asks for.
  */
 export interface RecordingRequest {
@@ -27,4 +46,12 @@ export interface RecordingRequest {
     "microphone": boolean;
     "mic_device": string;
     "fps": number;
+}
+
+/**
+ * TextResult is the outcome of recognising the text in an image.
+ */
+export interface TextResult {
+    "text": string;
+    "lines": number;
 }

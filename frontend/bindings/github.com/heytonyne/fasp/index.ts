@@ -7,5 +7,7 @@ export {
 };
 
 export type {
-    RecordingRequest
+    MediaJobEvent,
+    RecordingRequest,
+    TextResult
 } from "./models.js";
