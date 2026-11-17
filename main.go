@@ -26,14 +26,8 @@ import (
 	"github.com/heytonyne/fasp/internal/service/upload"
 	"github.com/heytonyne/fasp/internal/tray"
 	"github.com/heytonyne/fasp/internal/version"
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/menu"
-	"github.com/wailsapp/wails/v2/pkg/menu/keys"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
-	"github.com/wailsapp/wails/v2/pkg/options/windows"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 //go:embed all:frontend/dist
@@ -45,9 +39,13 @@ var trayIconData []byte
 //go:embed build/windows/trayicon.ico
 var trayIconDataWindows []byte
 
-// App struct
+// App is the Wails service whose exported methods the frontend calls. Its
+// bindings are generated into frontend/bindings.
 type App struct {
-	ctx               context.Context
+	app *application.App
+	// window is the one window the app owns. It is created before the app runs,
+	// so every method here can use it.
+	window            *application.WebviewWindow
 	captureService    capture.Service
 	fileService       file.Service
 	settingsService   settings.Service
@@ -58,7 +56,7 @@ type App struct {
 	uploadService     upload.Service
 	recentsService    recents.Service
 	trayManager       tray.Manager
-	quitting          bool
+	quitting          atomic.Bool
 
 	recording recordingState
 	media     *mediaServer
@@ -72,14 +70,17 @@ func NewApp() *App {
 	return &App{media: newMediaServer()}
 }
 
-// startup is called when the app starts. The context is saved
-// so we can call the runtime methods
-func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
+// emit sends an event to the frontend.
+func (a *App) emit(name string, data ...any) {
+	a.app.Event.Emit(name, data...)
+}
 
+// ServiceStartup runs when the application starts (Wails calls it; the
+// generator does not bind it).
+func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
 	// Initialize services
 	a.captureService = capture.New()
-	a.fileService = file.New(ctx)
+	a.fileService = file.New()
 	a.settingsService = settings.New()
 	a.hotkeyService = hotkey.New()
 	a.permissionService = permission.New()
@@ -87,11 +88,13 @@ func (a *App) startup(ctx context.Context) {
 	a.startupService = startup.New()
 	a.uploadService = upload.New(a.settingsService)
 	a.recentsService = recents.New()
+	return nil
+}
 
-	// Setup hotkeys from settings
+// onApplicationStarted sets up what needs the native run loop to be running:
+// the global hotkeys and the tray icon.
+func (a *App) onApplicationStarted(_ *application.ApplicationEvent) {
 	a.setupHotkeys()
-
-	// Setup system tray
 	a.setupTray()
 }
 
@@ -106,17 +109,17 @@ func (a *App) setupTray() {
 		switch action {
 		case tray.ActionCapture:
 			// Trigger screenshot capture
-			runtime.EventsEmit(a.ctx, "hotkey:capture")
+			a.emit("hotkey:capture")
 
 		case tray.ActionCaptureZone:
-			runtime.EventsEmit(a.ctx, "hotkey:capture_zone")
+			a.emit("hotkey:capture_zone")
 
 		case tray.ActionRecord:
 			a.toggleRecording()
 
 		case tray.ActionOpenImage:
 			// Trigger open image dialog
-			runtime.EventsEmit(a.ctx, "open:image")
+			a.emit("open:image")
 
 		case tray.ActionShowWindow:
 			// Show main window (restore last maximized/normal state)
@@ -128,7 +131,7 @@ func (a *App) setupTray() {
 
 		case tray.ActionSettings:
 			// Open settings window
-			runtime.EventsEmit(a.ctx, "open:settings")
+			a.emit("open:settings")
 
 		case tray.ActionOpenRecent:
 			if isVideo(arg) {
@@ -212,41 +215,46 @@ func (a *App) setupTray() {
 	}
 }
 
-// shutdown is called when the app is shutting down
-func (a *App) shutdown(ctx context.Context) {
+// shutdown runs when the app is shutting down.
+func (a *App) shutdown() {
+	// A quit with the window open (Cmd+Q, logout) must remember its size too.
+	a.saveWindowState()
+
 	// Cleanup tray
 	if a.trayManager != nil {
 		a.trayManager.Quit()
 	}
 
 	// Stop hotkey service
-	a.hotkeyService.Stop()
+	if a.hotkeyService != nil {
+		a.hotkeyService.Stop()
+	}
 }
 
 // buildMenu creates the application menu
-func (a *App) buildMenu() *menu.Menu {
-	appMenu := menu.NewMenu()
+func (a *App) buildMenu() *application.Menu {
+	appMenu := application.NewMenu()
 
 	// File menu
 	fileMenu := appMenu.AddSubmenu("File")
-	fileMenu.AddText("Capture Screenshot", nil, func(_ *menu.CallbackData) {
-		runtime.EventsEmit(a.ctx, "hotkey:capture")
+	fileMenu.Add("Capture Screenshot").OnClick(func(_ *application.Context) {
+		a.emit("hotkey:capture")
 	})
-	fileMenu.AddText("Capture Zone", nil, func(_ *menu.CallbackData) {
-		runtime.EventsEmit(a.ctx, "hotkey:capture_zone")
+	fileMenu.Add("Capture Zone").OnClick(func(_ *application.Context) {
+		a.emit("hotkey:capture_zone")
 	})
-	fileMenu.AddText("Record Screen...", nil, func(_ *menu.CallbackData) {
+	fileMenu.Add("Record Screen...").OnClick(func(_ *application.Context) {
 		a.toggleRecording()
 	})
-	fileMenu.AddText("Open Image...", keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
-		runtime.EventsEmit(a.ctx, "open:image")
+	fileMenu.Add("Open Image...").SetAccelerator("CmdOrCtrl+O").OnClick(func(_ *application.Context) {
+		a.emit("open:image")
 	})
 	fileMenu.AddSeparator()
-	fileMenu.AddText("Settings...", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
-		runtime.EventsEmit(a.ctx, "open:settings")
+	fileMenu.Add("Settings...").SetAccelerator("CmdOrCtrl+,").OnClick(func(_ *application.Context) {
+		a.emit("open:settings")
 	})
 	fileMenu.AddSeparator()
-	fileMenu.AddText("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+	fileMenu.Add("Quit").SetAccelerator("CmdOrCtrl+Q").OnClick(func(_ *application.Context) {
 		a.quitApp()
 	})
 
@@ -254,17 +262,17 @@ func (a *App) buildMenu() *menu.Menu {
 	// actions; without it, fields such as the Settings URL and token cannot be
 	// pasted into.
 	if goruntime.GOOS == "darwin" {
-		appMenu.Append(menu.EditMenu())
+		appMenu.AddRole(application.EditMenu)
 	}
 
 	// Window menu
 	windowMenu := appMenu.AddSubmenu("Window")
-	windowMenu.AddText("Show Window", nil, func(_ *menu.CallbackData) {
-		runtime.WindowShow(a.ctx)
-		runtime.WindowUnminimise(a.ctx)
+	windowMenu.Add("Show Window").OnClick(func(_ *application.Context) {
+		a.window.Show()
+		a.window.UnMinimise()
 	})
-	windowMenu.AddText("Hide Window", nil, func(_ *menu.CallbackData) {
-		runtime.WindowHide(a.ctx)
+	windowMenu.Add("Hide Window").OnClick(func(_ *application.Context) {
+		a.window.Hide()
 	})
 
 	return appMenu
@@ -302,7 +310,7 @@ func (a *App) setupHotkeys() {
 	}
 
 	registerHotkey := func(settingKey, eventName string) {
-		registerAction(settingKey, func() { runtime.EventsEmit(a.ctx, eventName) })
+		registerAction(settingKey, func() { a.emit(eventName) })
 	}
 	registerHotkey("capture_fullscreen", "hotkey:capture")
 	registerHotkey("capture_region", "hotkey:capture_region")
@@ -568,22 +576,24 @@ func (a *App) applyWindowState() {
 	}
 	println("[window] applyWindowState maximized=", s.WindowMaximized, "size=", s.WindowWidth, s.WindowHeight)
 	if s.WindowMaximized {
-		runtime.WindowMaximise(a.ctx)
+		a.window.Maximise()
 		return
 	}
-	runtime.WindowUnmaximise(a.ctx)
+	a.window.UnMaximise()
 	if s.WindowWidth > 0 && s.WindowHeight > 0 {
-		runtime.WindowSetSize(a.ctx, s.WindowWidth, s.WindowHeight)
+		a.window.SetSize(s.WindowWidth, s.WindowHeight)
 	}
 }
 
 // saveWindowState persists the current editor window size and maximized state.
 func (a *App) saveWindowState() {
-	if a.ctx == nil || a.recordingBar.Load() {
+	// A hidden or already destroyed window reports no size; its state was saved
+	// when it was hidden.
+	if a.window == nil || a.recordingBar.Load() || !a.window.IsVisible() {
 		return
 	}
-	maxed := runtime.WindowIsMaximised(a.ctx)
-	w, h := runtime.WindowGetSize(a.ctx)
+	maxed := a.window.IsMaximised()
+	w, h := a.window.Size()
 	println("[window] saveWindowState maximized=", maxed, "size=", w, h)
 	_ = a.settingsService.Set("window_maximized", maxed)
 	// Only remember the size when not maximized (maximized size is the screen).
@@ -597,98 +607,121 @@ func (a *App) saveWindowState() {
 func (a *App) ShowWindow() {
 	if a.recordingBar.Load() {
 		// Keep the recording bar's size and position.
-		runtime.WindowShow(a.ctx)
+		a.window.Show()
 		return
 	}
-	runtime.WindowShow(a.ctx)
-	runtime.WindowUnminimise(a.ctx)
+	a.window.Show()
+	a.window.UnMinimise()
 	a.applyWindowState()
-	focusWebView()
+	focusWebView(a.window)
 	// Re-apply shortly after: on Windows, maximising right after Show can be
 	// ignored because the window hasn't finished becoming visible yet.
 	go func() {
 		time.Sleep(120 * time.Millisecond)
 		a.applyWindowState()
-		focusWebView()
+		focusWebView(a.window)
 	}()
 }
 
 // HideWindow saves the current window state and hides the editor window.
 func (a *App) HideWindow() {
 	a.saveWindowState()
-	runtime.WindowHide(a.ctx)
+	a.window.Hide()
 }
 
-// onBeforeClose saves the window state, then decides whether the app may quit.
-//
-// macOS: Wails routes the close button AND every app termination (Cmd+Q, Dock
-// "Quit", "Quit & Reopen" after a permission grant, logout, SIGTERM) through
-// this hook, with no way to tell them apart. HideWindowOnClose is therefore on
-// for macOS, so the close button hides the app without reaching this hook, and
-// every call that does reach it is a real quit.
-//
-// Windows: the close button reaches this hook, so it hides the window and keeps
-// running unless the quit came from the tray/menu.
-func (a *App) onBeforeClose(_ context.Context) bool {
-	a.saveWindowState()
-	if a.quitting || goruntime.GOOS == "darwin" {
-		return false // allow the app to quit
+// onWindowClosing is the close button. The app lives in the tray, so closing
+// the window only hides it, after saving its state. Only a real quit (tray or
+// menu Quit) lets the window close. Cmd+Q and logout on macOS do not come
+// through here: they end the app directly and run shutdown.
+func (a *App) onWindowClosing(e *application.WindowEvent) {
+	if a.quitting.Load() {
+		return
 	}
-	runtime.WindowHide(a.ctx)
-	return true // prevent close; just hide the window
+	e.Cancel()
+	a.HideWindow()
+}
+
+// onFilesDropped passes files dropped on the editor to the frontend, with the
+// drop point in CSS pixels inside the web view.
+func (a *App) onFilesDropped(e *application.WindowEvent) {
+	paths := e.Context().DroppedFiles()
+	if len(paths) == 0 {
+		return
+	}
+	var x, y int
+	if d := e.Context().DropTargetDetails(); d != nil {
+		x, y = d.X, d.Y
+	}
+	a.emit("files:dropped", FilesDropped{X: x, Y: y, Paths: paths})
+}
+
+// FilesDropped is the payload of the "files:dropped" event.
+type FilesDropped struct {
+	X     int      `json:"x"`
+	Y     int      `json:"y"`
+	Paths []string `json:"paths"`
 }
 
 // quitApp marks a real quit and exits (used by tray/menu Quit).
 func (a *App) quitApp() {
-	a.quitting = true
-	runtime.Quit(a.ctx)
+	a.quitting.Store(true)
+	a.app.Quit()
 }
 
 func main() {
 	// Create an instance of the app structure
-	app := NewApp()
+	fasp := NewApp()
 
-	// Create application with options
-	err := wails.Run(&options.App{
-		Title:       "Fasp - Screenshot & Annotation",
-		Width:       1024,
-		Height:      768,
-		StartHidden: false, // TEMP: Show window for testing tray
-		// See onBeforeClose: on macOS this keeps the close button from being
-		// treated like a quit; on Windows onBeforeClose hides the window itself.
-		HideWindowOnClose: goruntime.GOOS == "darwin",
-		AssetServer: &assetserver.Options{
-			Assets: assets,
+	app := application.New(application.Options{
+		Name:        "fasp",
+		Description: "Screenshot & Annotation Tool\n\n" + version.Get().String(),
+		Services: []application.Service{
+			application.NewService(fasp),
+		},
+		Assets: application.AssetOptions{
+			Handler: application.AssetFileServerFS(assets),
 			// Requests the embedded assets cannot answer (/media/...) play
 			// local videos in the editor.
-			Handler: app.media,
+			Middleware: fasp.media.middleware,
 		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
-		OnBeforeClose:    app.onBeforeClose,
-		Menu:             app.buildMenu(),
-		// Dropped files reach the frontend through runtime.OnFileDrop. The
-		// webview's own drop handling stays on, so in-page drags keep working.
-		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true},
-		Mac: &mac.Options{
-			TitleBar: mac.TitleBarDefault(),
-			About: &mac.AboutInfo{
-				Title:   "Fasp",
-				Message: "Screenshot & Annotation Tool\n\n" + version.Get().String(),
+		// The window is hidden, not closed, so the last window closing must
+		// not end the app.
+		Mac: application.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
+		},
+		Windows: application.WindowsOptions{
+			DisableQuitOnLastWindowClosed: true,
+		},
+		// A second launch brings the running instance to the front instead of
+		// starting a second tray icon and a second set of global hotkeys.
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.wails.fasp",
+			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+				fasp.ShowWindow()
+				fasp.window.Focus()
 			},
 		},
-		Windows: &windows.Options{
-			WebviewIsTransparent: false,
-			WindowIsTranslucent:  false,
-			DisableWindowIcon:    false,
-		},
-		Bind: []interface{}{
-			app,
-		},
+		OnShutdown: fasp.shutdown,
 	})
+	fasp.app = app
 
-	if err != nil {
+	app.Menu.Set(fasp.buildMenu())
+
+	fasp.window = app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:             "main",
+		Title:            "Fasp - Screenshot & Annotation",
+		Width:            1024,
+		Height:           768,
+		URL:              "/",
+		BackgroundColour: application.NewRGB(27, 38, 54),
+		// Dropped files reach the frontend through the "files:dropped" event.
+		EnableFileDrop: true,
+	})
+	fasp.window.RegisterHook(events.Common.WindowClosing, fasp.onWindowClosing)
+	fasp.window.OnWindowEvent(events.Common.WindowFilesDropped, fasp.onFilesDropped)
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, fasp.onApplicationStarted)
+
+	if err := app.Run(); err != nil {
 		println("Error:", err.Error())
 	}
 }

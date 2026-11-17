@@ -2,7 +2,6 @@ package file
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"fmt"
 	"image"
@@ -13,19 +12,25 @@ import (
 	"time"
 
 	"github.com/heytonyne/fasp/internal/model"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // serviceImpl implements the Service interface
-type serviceImpl struct {
-	ctx context.Context
+type serviceImpl struct{}
+
+// New creates a new file service instance. The dialogs belong to the running
+// Wails application, so they can only be shown after it has started.
+func New() Service {
+	return &serviceImpl{}
 }
 
-// New creates a new file service instance
-func New(ctx context.Context) Service {
-	return &serviceImpl{
-		ctx: ctx,
+// visibleWindow is the window a dialog is attached to, or nil when the editor
+// is hidden: a dialog cannot sit on a window that is not on screen.
+func visibleWindow() application.Window {
+	if w := application.Get().Window.Current(); w != nil && w.IsVisible() {
+		return w
 	}
+	return nil
 }
 
 // OpenSaveDialog opens a native save file dialog
@@ -34,16 +39,16 @@ func (s *serviceImpl) OpenSaveDialog(defaultName string) (string, error) {
 		defaultName = s.GenerateFilename("png")
 	}
 
-	path, err := runtime.SaveFileDialog(s.ctx, runtime.SaveDialogOptions{
-		DefaultFilename: defaultName,
-		Title:           "Save Screenshot",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "PNG Images (*.png)", Pattern: "*.png"},
-			{DisplayName: "JPEG Images (*.jpg)", Pattern: "*.jpg;*.jpeg"},
-			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
-		},
-	})
-
+	dialog := application.Get().Dialog.SaveFile().
+		SetMessage("Save Screenshot").
+		SetFilename(defaultName).
+		AddFilter("PNG Images (*.png)", "*.png").
+		AddFilter("JPEG Images (*.jpg)", "*.jpg;*.jpeg").
+		AddFilter("All Files (*.*)", "*.*")
+	if w := visibleWindow(); w != nil {
+		dialog.AttachToWindow(w)
+	}
+	path, err := dialog.PromptForSingleSelection()
 	if err != nil {
 		return "", fmt.Errorf("failed to open save dialog: %w", err)
 	}
@@ -53,16 +58,16 @@ func (s *serviceImpl) OpenSaveDialog(defaultName string) (string, error) {
 
 // OpenImageDialog opens a native open file dialog for selecting images
 func (s *serviceImpl) OpenImageDialog() (string, error) {
-	path, err := runtime.OpenFileDialog(s.ctx, runtime.OpenDialogOptions{
-		Title: "Open Image",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Image Files", Pattern: "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp"},
-			{DisplayName: "PNG Images (*.png)", Pattern: "*.png"},
-			{DisplayName: "JPEG Images (*.jpg)", Pattern: "*.jpg;*.jpeg"},
-			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
-		},
-	})
-
+	dialog := application.Get().Dialog.OpenFile().
+		SetTitle("Open Image").
+		AddFilter("Image Files", "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp").
+		AddFilter("PNG Images (*.png)", "*.png").
+		AddFilter("JPEG Images (*.jpg)", "*.jpg;*.jpeg").
+		AddFilter("All Files (*.*)", "*.*")
+	if w := visibleWindow(); w != nil {
+		dialog.AttachToWindow(w)
+	}
+	path, err := dialog.PromptForSingleSelection()
 	if err != nil {
 		return "", fmt.Errorf("failed to open image dialog: %w", err)
 	}

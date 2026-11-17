@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"image"
 	"image/color"
 	"image/png"
@@ -18,7 +17,7 @@ import (
 // default folder on its own (no settings) and writes a real PNG there.
 func TestQuickSaveImageDefaultFolder(t *testing.T) {
 	app := &App{
-		fileService:     file.New(context.Background()),
+		fileService:     file.New(),
 		settingsService: settings.New(),
 	}
 

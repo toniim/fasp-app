@@ -12,8 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // VideoInfo opens a video in the in-app player ("open:video" event).
@@ -47,6 +45,18 @@ func (m *mediaServer) register(path string) (string, error) {
 	m.files[token] = path
 	m.mu.Unlock()
 	return "/media/" + token + "/" + url.PathEscape(filepath.Base(path)), nil
+}
+
+// middleware answers /media/ requests and lets every other request reach the
+// embedded frontend assets.
+func (m *mediaServer) middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/media/") {
+			m.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (m *mediaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +110,7 @@ func (a *App) openVideo(path string) {
 		println("[error] open video:", err.Error())
 		return
 	}
-	runtime.EventsEmit(a.ctx, "open:video", v)
+	a.emit("open:video", v)
 	a.ShowWindow()
 }
 
@@ -113,11 +123,14 @@ func (a *App) CopyFileToClipboard(path string) error {
 // SaveVideoAs copies a video to a place the user picks. It returns the new path,
 // or "" when the dialog was cancelled.
 func (a *App) SaveVideoAs(src string) (string, error) {
-	dst, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Save Recording",
-		DefaultFilename: filepath.Base(src),
-		Filters:         []runtime.FileFilter{{DisplayName: "MP4 Video (*.mp4)", Pattern: "*.mp4"}},
-	})
+	dialog := a.app.Dialog.SaveFile().
+		SetMessage("Save Recording").
+		SetFilename(filepath.Base(src)).
+		AddFilter("MP4 Video (*.mp4)", "*.mp4")
+	if a.window.IsVisible() {
+		dialog.AttachToWindow(a.window)
+	}
+	dst, err := dialog.PromptForSingleSelection()
 	if err != nil || dst == "" {
 		return "", err
 	}

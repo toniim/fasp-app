@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"github.com/heytonyne/fasp/internal/model"
 	"github.com/heytonyne/fasp/internal/service/recorder"
 	"github.com/heytonyne/fasp/internal/service/shell"
@@ -106,15 +104,15 @@ func (a *App) StartRecording(req RecordingRequest) error {
 	opts.Output = path
 
 	// Hide our own window from capture before the first frame is taken.
-	setExcludedFromCapture(true)
+	setExcludedFromCapture(a.window, true)
 	rec, err := recorder.Start(opts)
 	if err != nil {
-		setExcludedFromCapture(false)
+		setExcludedFromCapture(a.window, false)
 		return err
 	}
 	st.rec, st.path, st.finishing = rec, path, sync.Once{}
 	a.enterRecordingBar()
-	runtime.EventsEmit(a.ctx, "recording:started", RecordingStatus{Mode: req.Mode, StartedAt: time.Now().UnixMilli()})
+	a.emit("recording:started", RecordingStatus{Mode: req.Mode, StartedAt: time.Now().UnixMilli()})
 
 	go func() {
 		<-rec.Done() // stopped by the user, or the recorded window closed
@@ -161,9 +159,9 @@ func (a *App) finishRecording(rec recorder.Recording) {
 			res.SizeBytes, res.URL = v.SizeBytes, v.URL
 			a.recordRecent(path)
 		}
-		setExcludedFromCapture(false)
+		setExcludedFromCapture(a.window, false)
 		a.exitRecordingBar()
-		runtime.EventsEmit(a.ctx, "recording:finished", res)
+		a.emit("recording:finished", res)
 	})
 }
 
@@ -229,25 +227,21 @@ const (
 func (a *App) enterRecordingBar() {
 	a.saveWindowState()
 	a.recordingBar.Store(true)
-	runtime.WindowUnmaximise(a.ctx)
-	runtime.WindowSetSize(a.ctx, recordingBarWidth, recordingBarHeight)
-	runtime.WindowSetAlwaysOnTop(a.ctx, true)
-	if screens, err := runtime.ScreenGetAll(a.ctx); err == nil {
-		for _, s := range screens {
-			if s.IsCurrent {
-				runtime.WindowSetPosition(a.ctx, (s.Size.Width-recordingBarWidth)/2, 12)
-				break
-			}
-		}
+	a.window.UnMaximise()
+	a.window.SetSize(recordingBarWidth, recordingBarHeight)
+	a.window.SetAlwaysOnTop(true)
+	// The position is relative to the screen the window is on, as before.
+	if s, err := a.window.GetScreen(); err == nil && s != nil {
+		a.window.SetRelativePosition((s.Size.Width-recordingBarWidth)/2, 12)
 	}
-	runtime.WindowShow(a.ctx)
+	a.window.Show()
 }
 
 // exitRecordingBar restores the editor window.
 func (a *App) exitRecordingBar() {
 	a.recordingBar.Store(false)
-	runtime.WindowSetAlwaysOnTop(a.ctx, false)
-	runtime.WindowCenter(a.ctx)
+	a.window.SetAlwaysOnTop(false)
+	a.window.Center()
 	a.ShowWindow()
 }
 
@@ -258,6 +252,6 @@ func (a *App) toggleRecording() {
 		a.StopRecording()
 		return
 	}
-	runtime.EventsEmit(a.ctx, "open:record")
+	a.emit("open:record")
 	a.ShowWindow()
 }
