@@ -123,7 +123,8 @@ func (a *App) captureText() (msg, kind string) {
 	if err := a.requireScreenRecording(); err != nil {
 		return err.Error(), "error"
 	}
-	r, err := a.captureService.CaptureZone()
+	// The zone memory is for Repeat Last Zone; reading text does not change it.
+	r, _, err := a.captureService.CaptureZone()
 	if errors.Is(err, capture.ErrCancelled) {
 		return "", ""
 	}

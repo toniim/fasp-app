@@ -13,7 +13,9 @@
 - **Capture Zone (freeze shot)**: the screen freezes, you drag the area you want, and only that area opens in the editor. Menus, tooltips and hover states stay exactly as they were when you pressed the hotkey.
 - **Several images on one canvas**: add more screenshots, image files, a pasted image or files dropped on the editor; move, resize and reorder them, and arrange them in a row, a column or a grid.
 - **Screen recording**: record the full screen, one window or a region to MP4 (H.264 + AAC), with computer sound and/or a microphone, using the native hardware encoder. Fasp's own recording bar never appears in the video.
-- **Built-in player**: a recording opens in the editor's player, ready to copy as a file, save or upload.
+- **Built-in player**: a recording opens in the editor's player, ready to copy as a file, save or upload. Trim it, or turn a part of it into a GIF.
+- **Pin to screen**: float a shot on top of everything, on every desktop, as a reference while you work.
+- **Text from the screen (OCR)**: drag a zone and its text goes to the clipboard, or copy the text of a shot in the editor. It uses the system's own text recognition, so nothing is uploaded.
 - **Crop** after capturing, before you share.
 - **Backdrop**: put the shot on a background with a margin, rounded corners and a shadow, ready to post.
 - **Zoom and pan**: zoom with Ctrl + mouse wheel, hold Shift and drag to move around a large capture.
@@ -65,6 +67,7 @@ You can also build it yourself; see [Development](#development).
 | Second capture hotkey | `Ctrl+Shift+S` | `Cmd+Shift+6` |
 | Capture Zone | `Shift+PrintScreen` | `Cmd+Shift+7` |
 | Start / stop recording | `Ctrl+PrintScreen` | `Cmd+Shift+8` |
+| Capture Text | `Ctrl+Shift+9` | `Cmd+Shift+9` |
 
 Both capture the screen under the mouse cursor and open it in the editor with the **Crop** tool ready: drag to keep part of it, or pick another tool to annotate the whole capture.
 A hotkey (or the tray menu) takes the screen as it is: if the editor is open, it is in the shot, which is handy for showing Fasp itself. The **Capture** buttons inside Fasp and **Add screenshot** in the editor hide the editor first, so it is not in those shots.
@@ -95,6 +98,28 @@ Because the picture is taken the moment you press the hotkey, you can grab thing
 
 The tray menu has **Delayed Capture** with **Capture in 3 / 5 / 10 s** and **Capture Zone in 3 / 5 / 10 s**. The seconds left show next to the tray icon (macOS) or in its tooltip (Windows), so they are never in the picture. The screen is captured when the countdown ends; for a zone, the overlay then freezes the screen. To cancel, press `Esc` (a global key, held only while counting), choose **Cancel Countdown** in the tray menu, or choose a delayed item again.
 
+### Capture text (OCR)
+
+Press the **Capture Text** hotkey (or **File → Capture Text**). The zone overlay opens, the same as Capture Zone: drag an area, or click a window. The text in it is copied to the clipboard and the editor does not open. A short message says how many lines were copied, or "No text found". It appears in the editor when the editor is showing, and as a system notification when it is hidden (macOS asks once to allow notifications).
+
+In the editor, **Copy Text** reads the text of the whole shot, annotations included, and copies it.
+
+Text recognition is done by the system: Vision on macOS, Windows.Media.Ocr on Windows. On Windows it needs an OCR language: if none is installed, the message tells you to add one under Settings → Time & language → Language & region. **Settings → Text Recognition → Language** sets a language hint; **Automatic** lets the system choose.
+
+### Pin a shot to the screen
+
+**Pin** in the editor's action bar opens the picture you would copy (annotations included) in its own borderless window that stays above other apps and shows on every Space or virtual desktop. It opens at its natural size, shrunk to fit within 80% of the screen, over the editor. You can open several pins; they do not depend on the editor, so closing or hiding it keeps them.
+
+| Action | Result |
+|---|---|
+| Drag | Moves the pin |
+| Mouse wheel, or a pinch on the trackpad | Zooms around the cursor |
+| Double-click | Back to 100% (the size it opened at) |
+| Hover toolbar | **Opacity** (click to step through 100, 75, 50 and 25 %), Copy, Save As, Close |
+| `Esc` | Closes the focused pin |
+
+Pins are ordinary windows, so they show up in Fasp's own screenshots and recordings.
+
 ### Record the screen
 
 Press the **Start / stop recording** hotkey (or **File → Record Screen…**, or the tray menu) and choose:
@@ -123,8 +148,12 @@ The MP4 is saved in the Quick Save folder (`Recording_<date>_<time>.mp4`) and op
 | Save As | `Ctrl+Shift+S` | Saves a copy elsewhere |
 | Show in Folder | | Opens the folder with the file |
 | Upload | | Uploads the video to your fasp server and copies the link |
+| Save Trimmed… | | Saves the part between the two trim handles as a new MP4 |
+| Export GIF… | | Makes a looping GIF of the part between the handles |
 | | `Space` / `K`, `←` `→` | Play/pause, skip 5 s |
 | | `Esc` | Close the player |
+
+**Trim and GIF.** Under the video, a timeline has two handles: drag them, use `←` `→` on a focused handle (`Shift` for 1 s steps), or play to a moment and press **Set Start** / **Set End**. The start, end and length show next to the buttons; **Reset** takes the whole video back. **Save Trimmed…** asks where to save, then trims in the background; audio and video are cut at the same times. **Export GIF…** asks for the frame rate (8, 10, 12 or 15 fps) and the width (original up to 960 px, 640 px or 480 px) and shows the estimated size before it starts. A progress bar follows the export and **Cancel** stops it. When it is ready, **Save As…** picks a place, **Quick Save** writes it to the default folder and **Copy** puts the GIF file on the clipboard, like a video.
 
 Recordings in the tray **Recents** open in the same player.
 
@@ -206,6 +235,8 @@ Click **Backdrop** in the toolbar to put the shot on a background before you sha
 | Quick Save | `Ctrl+S` | Saves to the default folder (`Pictures\Fasp` unless set in Settings) |
 | Save As | `Ctrl+Shift+S` | Choose a file name and format (PNG or JPEG) |
 | Copy | `Ctrl+C` | Puts the annotated image on the clipboard |
+| Pin | | Floats the image on top of the screen (see [Pin a shot to the screen](#pin-a-shot-to-the-screen)) |
+| Copy Text | | Recognises the text in the image and copies it (see [Capture text](#capture-text-ocr)) |
 | Upload | | Uploads to your fasp server and copies the link (see Settings). The arrow next to it uploads this one time as **Public** or **Private** |
 | | `Ctrl+Shift+C` | Cancels a crop, or hides the editor |
 
@@ -226,7 +257,8 @@ Open **Settings** from the tray or with `Ctrl+,`.
 
 ![Settings window](docs/screenshots/settings.png)
 
-- **Hotkeys**: Capture Screenshot, Capture Zone, Repeat Last Zone (no shortcut until you set one) and Start / Stop Recording. Click a field and press a new combination, or pick a preset. One combination can only be used once.
+- **Hotkeys**: Capture Screenshot, Capture Zone, Repeat Last Zone (no shortcut until you set one) Start / Stop Recording and Capture Text. Click a field and press a new combination, or pick a preset. One combination can only be used once.
+- **Text Recognition**: the language hint for Capture Text and Copy Text (Automatic by default).
 - **Recording**: the default audio sources, microphone and frame rate (15, 30 or 60 fps) for new recordings.
 - **Account & Server**: the fasp server URL and an API key (create one in fasp under Settings → API Keys, scope `files:write`), with **Test Connection**.
 - **Run at Startup**: start Fasp when you log in.
@@ -284,6 +316,9 @@ main.go                      Wails v3 app: the App service the frontend calls, w
 app_zone.go                  Capture Zone and region selection methods
 app_recording.go             Recording methods, the recording bar, saving and results
 app_media.go                 Serves recordings to the in-app player, copy as file, Save As
+app_mediajobs.go             Trim and GIF export jobs (background, progress events, cancel)
+app_pin.go                   Pinned screenshots: borderless always-on-top windows and their zoom
+app_text.go                  Text recognition: Capture Text, Copy Text, OCR languages
 focus_windows.go             Gives the web view keyboard focus when the editor is shown
 exclude_capture_windows.go   Keeps the Fasp window out of recordings
 Taskfile.yml, build/*/Taskfile.yml  Wails v3 build tasks (wails3 build / package / dev)
