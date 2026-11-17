@@ -4,9 +4,11 @@
 #
 # Usage: ./scripts/package-macos.sh [output.zip]
 #
-# The app is signed ad-hoc: a universal binary has to carry a signature to run
-# on Apple Silicon at all, and without a Developer ID ad-hoc is all we have.
-# Users therefore have to clear Gatekeeper once (see README, "Install > macOS").
+# The app is signed with the identity in $SIGN_CERT when it is set (the Release
+# workflow sets it to the "Fasp Dev" certificate, so the Screen Recording grant
+# survives updates), otherwise ad-hoc: a universal binary has to carry a
+# signature to run on Apple Silicon at all. Neither is a Developer ID, so users
+# have to clear Gatekeeper once (see README, "Install > macOS").
 set -euo pipefail
 
 APP="build/bin/fasp.app"
@@ -28,7 +30,7 @@ for arch in x86_64 arm64; do
     esac
 done
 
-"$(dirname "$0")/sign-macos.sh" -
+"$(dirname "$0")/sign-macos.sh" "${SIGN_CERT:--}"
 codesign --verify --deep --strict --verbose=2 "$APP"
 
 # ditto keeps the bundle's symlinks and metadata intact, unlike plain zip.

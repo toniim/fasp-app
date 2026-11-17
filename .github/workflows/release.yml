@@ -143,10 +143,49 @@ jobs:
             -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
             -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}'"
 
-      # Ad-hoc signed and not notarized: there is no Apple Developer ID yet.
-      # Users clear Gatekeeper once; see README, "Install > macOS".
-      - name: Sign ad-hoc and package
-        run: ./scripts/package-macos.sh build/bin/fasp-macos-universal.zip
+      # Signed with the "Fasp Dev" certificate, the same one local builds use
+      # (stored by scripts/upload-signing-cert.sh): macOS then keeps the Screen
+      # Recording grant across updates, because it is tied to identifier +
+      # certificate instead of one build's hash. Without the secrets the app is
+      # signed ad-hoc. Not a Developer ID and not notarized either way, so users
+      # clear Gatekeeper once; see README, "Install > macOS".
+      - name: Import signing certificate
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_CERT_P12" ]; then
+            # A published release signed ad-hoc would make every user grant
+            # Screen Recording again, so a tag build needs the certificate.
+            if [ "$GITHUB_REF_TYPE" = tag ]; then
+              echo "MACOS_CERT_P12 is not set; run scripts/upload-signing-cert.sh"; exit 1
+            fi
+            echo "MACOS_CERT_P12 is not set: the app will be signed ad-hoc."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_pass=$(openssl rand -hex 16)
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$keychain_pass" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_pass" "$keychain"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/signing.p12"
+          # Lets codesign use the key without a keychain prompt.
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_pass" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security find-identity -p codesigning "$keychain"
+          echo "SIGN_CERT=Fasp Dev" >> "$GITHUB_ENV"
+          echo "SIGN_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Sign and package
+        run: |
+          ./scripts/package-macos.sh build/bin/fasp-macos-universal.zip
+          codesign -d -r- build/bin/fasp.app
+
+      - name: Remove signing keychain
+        if: always() && env.SIGN_KEYCHAIN != ''
+        run: security delete-keychain "$SIGN_KEYCHAIN"
 
       - name: Smoke test (app stays up)
         run: ./scripts/smoke-macos.sh
