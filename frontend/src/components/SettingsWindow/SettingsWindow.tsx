@@ -1,10 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { GetSettings, UpdateSetting, TestUploadConnection, ListMicrophones } from '../../../bindings/github.com/heytonyne/fasp/app';
+import { GetSettings, UpdateSetting, TestUploadConnection, ListMicrophones, GetOCRLanguages } from '../../../bindings/github.com/heytonyne/fasp/app';
 import ShortcutField from './ShortcutField';
 import { Settings } from '../../types';
 import './SettingsWindow.css';
 
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
+
+// A readable name for an OCR language tag such as "vi-VN"; the tag itself when
+// the browser does not know it.
+const languageName = (tag: string): string => {
+  try {
+    const name = new Intl.DisplayNames(['en'], { type: 'language' }).of(tag);
+    return name && name !== tag ? `${name} (${tag})` : tag;
+  } catch {
+    return tag;
+  }
+};
 
 interface SettingsWindowProps {
   onClose: () => void;
@@ -14,6 +25,7 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [hotkeys, setHotkeys] = useState<Record<string, string>>({});
   const [mics, setMics] = useState<{ id: string; name: string }[]>([]);
+  const [ocrLangs, setOcrLangs] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
   const [connectionMessage, setConnectionMessage] = useState('');
@@ -45,7 +57,9 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
         capture_zone: data.hotkeys?.capture_zone || '',
         repeat_zone: data.hotkeys?.repeat_zone || '',
         record: data.hotkeys?.record || '',
+        capture_text: data.hotkeys?.capture_text || '',
       });
+      GetOCRLanguages().then((list) => setOcrLangs(list || [])).catch(() => setOcrLangs([]));
       ListMicrophones().then((list) => setMics(list || [])).catch(() => setMics([]));
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -67,9 +81,10 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
 
     setIsSaving(true);
     try {
-      for (const key of ['capture_fullscreen', 'capture_zone', 'repeat_zone', 'record']) {
+      for (const key of ['capture_fullscreen', 'capture_zone', 'repeat_zone', 'record', 'capture_text']) {
         await UpdateSetting(`hotkeys.${key}`, hotkeys[key] || '');
       }
+      await UpdateSetting('ocr_language', settings.ocr_language || '');
       await UpdateSetting('record_system_audio', settings.record_system_audio ?? true);
       await UpdateSetting('record_microphone', settings.record_microphone ?? false);
       await UpdateSetting('record_mic_device', settings.record_mic_device || '');
@@ -177,6 +192,13 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
                 onChange={(v) => setHotkeys({ ...hotkeys, record: v })}
               />
             </div>
+            <div className="setting-row">
+              <label className="setting-label">Capture Text</label>
+              <ShortcutField
+                value={hotkeys.capture_text || ''}
+                onChange={(v) => setHotkeys({ ...hotkeys, capture_text: v })}
+              />
+            </div>
             <p className="setting-hint">
               Capture Zone freezes the screen so you can drag the area to keep. Repeat Last Zone captures
               that same area again at once, without the overlay, and has no shortcut until you set one.
@@ -238,6 +260,34 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
                   <option value={60}>60 fps</option>
                 </select>
                 <p className="setting-hint">Defaults for new recordings; you can change them each time you start one.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>Text Recognition</h3>
+
+          <div className="settings-table">
+            <div className="setting-row">
+              <label className="setting-label">Language</label>
+              <div className="setting-input">
+                <select
+                  value={settings.ocr_language || ''}
+                  onChange={(e) => setSettings({ ...settings, ocr_language: e.target.value })}
+                >
+                  <option value="">Automatic</option>
+                  {/* A saved language the system no longer lists stays selectable. */}
+                  {settings.ocr_language && !ocrLangs.includes(settings.ocr_language) && (
+                    <option value={settings.ocr_language}>{languageName(settings.ocr_language)}</option>
+                  )}
+                  {ocrLangs.map((tag) => (
+                    <option key={tag} value={tag}>{languageName(tag)}</option>
+                  ))}
+                </select>
+                <p className="setting-hint">
+                  Used by Capture Text and Copy Text. Automatic lets the system pick the language.
+                </p>
               </div>
             </div>
           </div>

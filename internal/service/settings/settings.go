@@ -90,6 +90,8 @@ func (s *serviceImpl) Get(key string) (interface{}, error) {
 		return s.settings.WindowWidth, nil
 	case "window_height":
 		return s.settings.WindowHeight, nil
+	case "ocr_language":
+		return s.settings.OCRLanguage, nil
 	case "editor_prefs":
 		return s.settings.EditorPrefs, nil
 	case "last_zone":
@@ -211,6 +213,12 @@ func (s *serviceImpl) Set(key string, value interface{}) error {
 			s.settings.RecordFPS = v
 		} else {
 			return fmt.Errorf("record_fps must be 15, 30 or 60")
+		}
+	case "ocr_language":
+		if v, ok := value.(string); ok {
+			s.settings.OCRLanguage = v
+		} else {
+			return fmt.Errorf("invalid type for ocr_language")
 		}
 	case "editor_prefs":
 		if v, ok := value.(map[string]interface{}); ok {

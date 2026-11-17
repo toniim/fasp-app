@@ -108,6 +108,10 @@ type Settings struct {
 	RecordMicDevice   string `json:"record_mic_device"` // "" = system default
 	RecordFPS         int    `json:"record_fps"`
 
+	// OCRLanguage is the language hint for text recognition, a tag from the
+	// system OCR engine (for example "en-US"). Empty means automatic.
+	OCRLanguage string `json:"ocr_language"`
+
 	// EditorPrefs holds the editor's tool settings (backdrop, highlight, blur
 	// mode, ...). The frontend owns its shape: it is kept as written, so a new
 	// editor option needs no change here. Nil when never saved.
@@ -131,6 +135,7 @@ func DefaultSettings() *Settings {
 		"capture_region":     "cmd+shift+6",
 		"capture_zone":       "cmd+shift+7",
 		"record":             "cmd+shift+8",
+		"capture_text":       "cmd+shift+9",
 	}
 
 	// Use Windows-friendly defaults on Windows
@@ -140,6 +145,7 @@ func DefaultSettings() *Settings {
 			"capture_region":     "Ctrl+Shift+S",
 			"capture_zone":       "Shift+PrintScreen",
 			"record":             "Ctrl+PrintScreen",
+			"capture_text":       "Ctrl+Shift+9",
 		}
 	}
 

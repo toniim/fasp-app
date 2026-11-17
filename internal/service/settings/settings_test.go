@@ -32,7 +32,7 @@ func TestLoadKeepsNewHotkeyDefaults(t *testing.T) {
 		t.Errorf("user hotkey lost: %q", hk["capture_fullscreen"])
 	}
 	def := model.DefaultSettings().Hotkeys
-	for _, k := range []string{"capture_zone", "record"} {
+	for _, k := range []string{"capture_zone", "record", "capture_text"} {
 		if hk[k] == "" || hk[k] != def[k] {
 			t.Errorf("%s = %q, want default %q", k, hk[k], def[k])
 		}

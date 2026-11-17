@@ -128,6 +128,11 @@ function App() {
       setVideo(v);
     });
 
+    // A message for work that started outside the editor (Capture Text hotkey).
+    const unsubscribeToast = Events.On('toast', ({ data }: { data: ToastState }) => {
+      setToast(data);
+    });
+
     // A reload during a recording (e.g. dev hot reload) must keep the bar.
     IsRecording().then((on) => {
       if (on) setRecording((r) => r || { mode: '', started_at: Date.now() });
@@ -140,6 +145,7 @@ function App() {
       if (unsubscribeRecStarted) unsubscribeRecStarted();
       if (unsubscribeRecFinished) unsubscribeRecFinished();
       if (unsubscribeOpenVideo) unsubscribeOpenVideo();
+      if (unsubscribeToast) unsubscribeToast();
       if (unsubscribeCapture) unsubscribeCapture();
       if (unsubscribeRegion) unsubscribeRegion();
       if (unsubscribeSettings) unsubscribeSettings();

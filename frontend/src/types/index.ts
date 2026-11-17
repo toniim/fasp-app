@@ -48,6 +48,8 @@ export interface Settings {
   record_microphone?: boolean;
   record_mic_device?: string;
   record_fps?: number;
+  // Language hint for text recognition; empty means automatic.
+  ocr_language?: string;
   // Editor tool settings kept across restarts (see utils/editor-prefs.ts).
   editor_prefs?: Record<string, unknown>;
   defaultSaveLocation?: string; // Alias for compatibility
