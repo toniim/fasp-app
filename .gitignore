@@ -1,6 +1,8 @@
 build/bin
 node_modules
 frontend/dist
+# Checksum the wails3 build writes to decide whether to reinstall npm packages
+frontend/package.json.md5
 
 # Windows resource files generated next to main.go while building
 *.syso
