@@ -133,6 +133,13 @@ func tray_onCaptureZoneDelayed(seconds C.int) {
 	}
 }
 
+//export tray_onCaptureText
+func tray_onCaptureText() {
+	if globalCallback != nil {
+		go globalCallback(ActionCaptureText, "")
+	}
+}
+
 //export tray_onRepeatZone
 func tray_onRepeatZone() {
 	if globalCallback != nil {

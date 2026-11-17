@@ -142,6 +142,9 @@ func (a *App) setupTray() {
 		case tray.ActionRepeatZone:
 			a.emit("hotkey:repeat_zone")
 
+		case tray.ActionCaptureText:
+			go a.CaptureText()
+
 		case tray.ActionCancelCountdown:
 			a.cancelCountdown()
 

@@ -100,7 +100,7 @@ The tray menu has **Delayed Capture** with **Capture in 3 / 5 / 10 s** and **Cap
 
 ### Capture text (OCR)
 
-Press the **Capture Text** hotkey (or **File → Capture Text**). The zone overlay opens, the same as Capture Zone: drag an area, or click a window. The text in it is copied to the clipboard and the editor does not open. A short message says how many lines were copied, or "No text found". It appears in the editor when the editor is showing, and as a system notification when it is hidden (macOS asks once to allow notifications).
+Press the **Capture Text** hotkey (or **File → Capture Text**, or the tray menu). The zone overlay opens, the same as Capture Zone: drag an area, or click a window. The text in it is copied to the clipboard and the editor does not open. A short message says how many lines were copied, or "No text found". It appears in the editor when the editor is showing, and as a system notification when it is hidden (macOS asks once to allow notifications).
 
 In the editor, **Copy Text** reads the text of the whole shot, annotations included, and copies it.
 
@@ -248,7 +248,7 @@ On macOS, use `Cmd` in place of `Ctrl` for the editor shortcuts.
 
 ### Tray menu
 
-Capture Screenshot, Capture Zone, **Repeat Last Zone**, **Delayed Capture** (see below), Record Screen / Stop Recording, Open Image…, **Recents** (your latest saved screenshots and recordings, and their folder), Show/Hide Window, Settings… and Quit.
+Capture Screenshot, Capture Zone, **Repeat Last Zone**, **Capture Text**, **Delayed Capture** (see below), Record Screen / Stop Recording, Open Image…, **Recents** (your latest saved screenshots and recordings, and their folder), Show/Hide Window, Settings… and Quit.
 On Windows, closing the editor window only hides it and Fasp keeps running in the tray; use **Quit** to exit.
 
 ### Settings

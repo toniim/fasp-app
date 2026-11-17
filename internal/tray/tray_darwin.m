@@ -7,6 +7,7 @@ extern void tray_onCaptureZone(void);
 extern void tray_onCaptureDelayed(int seconds);
 extern void tray_onCaptureZoneDelayed(int seconds);
 extern void tray_onRepeatZone(void);
+extern void tray_onCaptureText(void);
 extern void tray_onCancelCountdown(void);
 extern void tray_onRecord(void);
 extern void tray_onOpenImage(void);
@@ -60,6 +61,10 @@ static void apply_countdown(int remaining);
 
 - (void)onCaptureZoneDelayed:(id)sender {
     tray_onCaptureZoneDelayed((int)((NSMenuItem *)sender).tag);
+}
+
+- (void)onCaptureText:(id)sender {
+    tray_onCaptureText();
 }
 
 - (void)onRepeatZone:(id)sender {
@@ -173,6 +178,12 @@ static void create_status_item(void) {
                                                          keyEquivalent:@""];
         repeatZoneItem.target = delegate;
         [menu addItem:repeatZoneItem];
+
+        NSMenuItem *textItem = [[NSMenuItem alloc] initWithTitle:@"Capture Text"
+                                                          action:@selector(onCaptureText:)
+                                                   keyEquivalent:@""];
+        textItem.target = delegate;
+        [menu addItem:textItem];
 
         // Delayed capture: the screen, then the zone overlay, after 3, 5 or 10 s.
         NSMenuItem *delayedItem = [[NSMenuItem alloc] initWithTitle:@"Delayed Capture"

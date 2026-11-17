@@ -72,6 +72,7 @@ func (m *windowsManager) onReady() {
 	mCapture := systray.AddMenuItem("Capture Screenshot", "Take a screenshot")
 	mCaptureZone := systray.AddMenuItem("Capture Zone", "Freeze the screen and drag the area to capture")
 	mRepeatZone := systray.AddMenuItem("Repeat Last Zone", "Capture the last zone again, without the overlay")
+	mCaptureText := systray.AddMenuItem("Capture Text", "Select a zone and copy the text in it")
 
 	// Delayed capture: the screen, then the zone overlay, after a countdown.
 	mDelayed := systray.AddMenuItem("Delayed Capture", "Capture after a countdown")
@@ -175,6 +176,8 @@ func (m *windowsManager) onReady() {
 				m.emit(ActionCaptureZone, "")
 			case <-mRepeatZone.ClickedCh:
 				m.emit(ActionRepeatZone, "")
+			case <-mCaptureText.ClickedCh:
+				m.emit(ActionCaptureText, "")
 			case <-mCancel.ClickedCh:
 				m.emit(ActionCancelCountdown, "")
 			case <-mRecord.ClickedCh:

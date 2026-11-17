@@ -33,6 +33,8 @@ const (
 	ActionRepeatZone
 	// ActionCancelCountdown cancels a running capture countdown
 	ActionCancelCountdown
+	// ActionCaptureText freezes the screen, reads the text in a zone and copies it
+	ActionCaptureText
 )
 
 // DelayChoices are the delays, in seconds, the tray offers for delayed capture.
