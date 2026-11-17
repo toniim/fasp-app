@@ -1,195 +1,103 @@
 # Build Instructions
 
+Fasp is built with [Wails v3](https://v3.wails.io). The build runs through the `wails3` CLI and the
+Taskfiles in `Taskfile.yml` and `build/`. The `make` targets wrap them and stamp the version.
+
 ## Prerequisites
 
-- Go 1.21 or later
-- Node.js 16 or later
-- Wails v2 CLI: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
-- Xcode Command Line Tools (macOS): `xcode-select --install`
+- Go 1.26 (the toolchain pinned in `go.mod`; Go 1.27 is not used)
+- Node.js 18 or later
+- Wails v3 CLI at the version in `go.mod`: `make install`, or
+  `go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0`
+- macOS: Xcode Command Line Tools (`xcode-select --install`)
+- Windows installer: [NSIS](https://nsis.sourceforge.io) (`makensis` on the PATH)
+
+Make sure `$(go env GOPATH)/bin` is on your PATH so `wails3` is found.
 
 ## Quick Build
 
-### Universal Binary (Recommended)
-
-Build for both ARM64 (Apple Silicon) and AMD64 (Intel):
-
 ```bash
-./scripts/build.sh
+make build-darwin-signed   # macOS app (arm64), signed with the "Fasp Dev" certificate
+make build-darwin          # macOS app (arm64), ad-hoc signed
+make build-windows         # fasp.exe and fasp-amd64-installer.exe
 ```
 
-Output: `build/bin/fasp.app`
+Output goes to `build/bin/`: `fasp.app`, `fasp.exe`, `fasp-amd64-installer.exe`.
 
-### Platform-Specific Builds
+### Universal macOS binary (Apple Silicon + Intel)
 
-**ARM64 only (Apple Silicon M1/M2/M3)**:
 ```bash
-./scripts/build-arm64.sh
+./scripts/build.sh                # darwin/universal by default
+./scripts/build.sh darwin/arm64   # or darwin/amd64
 ```
 
-**AMD64 only (Intel Mac)**:
-```bash
-./scripts/build-amd64.sh
-```
+or `wails3 task darwin:package:universal`. `./scripts/package-macos.sh` then signs and zips it.
 
-**Universal Binary**:
-```bash
-./scripts/build-universal.sh
-```
-
-## Development Build
-
-For development with hot reload:
+## Development
 
 ```bash
-wails dev
+make dev    # wails3 dev: Vite hot reload plus the Go app
 ```
 
 ## Manual Build
 
-If you need to build manually:
+`FASP_LDFLAGS` carries the `-X` flags that stamp `internal/version`; the Taskfile adds it to `go build`.
 
 ```bash
-# Get version info
-VERSION=$(grep 'Version = ' internal/version/version.go | sed 's/.*"\(.*\)".*/\1/')
-GIT_COMMIT=$(git rev-parse HEAD)
-BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
+export FASP_LDFLAGS="\
+  -X 'github.com/heytonyne/fasp/internal/version.Version=$(grep 'Version = ' internal/version/version.go | sed 's/.*"\(.*\)".*/\1/')' \
+  -X 'github.com/heytonyne/fasp/internal/version.BuildTime=$(date -u '+%Y-%m-%d %H:%M:%S')' \
+  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=$(git rev-parse HEAD)'"
 
-# Build
-wails build -platform darwin/universal -ldflags "\
-  -X 'github.com/heytonyne/fasp/internal/version.Version=${VERSION}' \
-  -X 'github.com/heytonyne/fasp/internal/version.BuildTime=${BUILD_TIME}' \
-  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=${GIT_COMMIT}' \
-"
+export GOTOOLCHAIN=$(sed -n 's/^toolchain //p' go.mod)
+wails3 package GOOS=darwin GOARCH=arm64     # build/bin/fasp.app
+wails3 package GOOS=windows GOARCH=amd64    # build/bin/fasp.exe + installer
+wails3 build GOOS=windows GOARCH=amd64      # build/bin/fasp.exe only
 ```
+
+The Windows app has no C code, so `fasp.exe` also cross-compiles from macOS or Linux. The installer needs `makensis`.
+
+## Bindings
+
+The frontend calls the Go `App` service through generated TypeScript in `frontend/bindings/`. The build
+regenerates it; to do it by hand after changing the exported methods or their types of `App`:
+
+```bash
+wails3 generate bindings -clean=true -ts -i -d frontend/bindings
+```
+
+Commit the result.
 
 ## Verify Build
 
-Check the architecture of the built binary:
-
 ```bash
 file build/bin/fasp.app/Contents/MacOS/fasp
+codesign --verify --deep --strict build/bin/fasp.app
 ```
 
-Expected outputs:
+A universal build reports `Mach-O universal binary with 2 architectures: [x86_64] [arm64]`.
 
-- **Universal**: `Mach-O universal binary with 2 architectures: [x86_64] [arm64]`
-- **ARM64**: `Mach-O 64-bit executable arm64`
-- **AMD64**: `Mach-O 64-bit executable x86_64`
+## Build files
 
-## Build Options
+| Path | What it is |
+|---|---|
+| `Taskfile.yml`, `build/Taskfile.yml`, `build/darwin/Taskfile.yml`, `build/windows/Taskfile.yml` | Build tasks |
+| `build/config.yml` | Product name, bundle id `com.wails.fasp`, version, dev-server settings |
+| `build/darwin/Info.plist` | macOS bundle metadata (also the microphone usage text) |
+| `build/darwin/entitlements.plist` | Entitlements `scripts/sign-macos.sh` signs with |
+| `build/windows/` | Icon, manifest, version info and the NSIS installer script |
 
-### Platform Options
-
-- `darwin/arm64` - macOS ARM64 (Apple Silicon)
-- `darwin/amd64` - macOS AMD64 (Intel)
-- `darwin/universal` - Universal Binary (both architectures)
-
-### Build Flags
-
-- `-ldflags` - Set version information at build time
-- `-platform` - Target platform
-- `-clean` - Clean build directory before building
-- `-debug` - Build with debug symbols
-
-### Examples
-
-**Clean build**:
-```bash
-wails build -clean
-```
-
-**Debug build**:
-```bash
-wails build -debug
-```
-
-**Production build with all flags**:
-```bash
-wails build -clean -platform darwin/universal -ldflags "-X 'github.com/heytonyne/fasp/internal/version.Version=v2025.12.0'"
-```
+Do not run `wails3 update build-assets`: it overwrites `Info.plist` and the installer files with the
+defaults. Icons are regenerated with `wails3 task common:generate:icons`.
 
 ## Troubleshooting
 
-### Build fails with "command not found: wails"
-
-Install Wails CLI:
-```bash
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
-```
-
-Make sure `$GOPATH/bin` is in your PATH:
-```bash
-export PATH=$PATH:$(go env GOPATH)/bin
-```
-
-### Build fails with "xcode-select: error"
-
-Install Xcode Command Line Tools:
-```bash
-xcode-select --install
-```
-
-### Frontend build fails
-
-Clean and rebuild frontend:
-```bash
-cd frontend
-npm install
-npm run build
-cd ..
-wails build
-```
-
-### Permission denied when running build script
-
-Make scripts executable:
-```bash
-chmod +x scripts/*.sh
-```
+- **`command not found: wails3`**: run `make install` and add `$(go env GOPATH)/bin` to the PATH.
+- **`xcode-select: error`**: `xcode-select --install`.
+- **`make` says the wails3 CLI differs from go.mod**: run `make install`.
+- **Frontend build fails**: `cd frontend && npm install && npm run build`.
 
 ## Distribution
 
-### Create DMG (macOS)
-
-```bash
-# Install create-dmg
-brew install create-dmg
-
-# Create DMG
-create-dmg \
-  --volname "Fasp" \
-  --window-pos 200 120 \
-  --window-size 800 400 \
-  --icon-size 100 \
-  --icon "fasp.app" 200 190 \
-  --hide-extension "fasp.app" \
-  --app-drop-link 600 185 \
-  "Fasp-${VERSION}.dmg" \
-  "build/bin/fasp.app"
-```
-
-### Code Signing (macOS)
-
-```bash
-# Sign the app
-codesign --deep --force --verify --verbose --sign "Developer ID Application: Your Name" build/bin/fasp.app
-
-# Verify signature
-codesign --verify --verbose build/bin/fasp.app
-```
-
-### Notarization (macOS)
-
-Required for distribution outside the Mac App Store:
-
-```bash
-# Create zip for notarization
-ditto -c -k --keepParent build/bin/fasp.app fasp.zip
-
-# Submit for notarization
-xcrun notarytool submit fasp.zip --apple-id "your@email.com" --team-id "TEAMID" --password "app-specific-password"
-
-# Staple the notarization ticket
-xcrun stapler staple build/bin/fasp.app
-```
-
+Releases are built by the Release workflow (see the README, "Releasing"). The macOS app is signed with the
+"Fasp Dev" certificate by `scripts/sign-macos.sh`; it is not notarized.

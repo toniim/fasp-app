@@ -47,11 +47,11 @@ Equivalent manual command (what the Makefile / build.sh run):
 
 ```bash
 VERSION=$(grep 'Version = ' internal/version/version.go | sed 's/.*"\(.*\)".*/\1/')
-wails build -ldflags "\
+export FASP_LDFLAGS="\
   -X 'github.com/heytonyne/fasp/internal/version.Version=${VERSION}' \
   -X 'github.com/heytonyne/fasp/internal/version.BuildTime=$(date -u '+%Y-%m-%d %H:%M:%S')' \
-  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=$(git rev-parse HEAD)' \
-"
+  -X 'github.com/heytonyne/fasp/internal/version.GitCommit=$(git rev-parse HEAD)'"
+wails3 package
 ```
 
 ### 3. Tag the release (follows version.go)
