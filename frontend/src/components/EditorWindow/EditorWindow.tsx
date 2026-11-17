@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useLayoutEffect, useCallback, useState } from 'react';
-import { Stage, Layer, Image as KonvaImage, Rect, Arrow, Text, Transformer, Line, Circle, Group } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Rect, Arrow, Text, Transformer, Line, Circle, Group, Shape } from 'react-konva';
 import { useEditorStore } from '../../store/editorStore';
 import { Annotation } from '../../types';
 import Toolbar from './Toolbar';
@@ -9,6 +9,7 @@ import Toast from '../Toast/Toast';
 import { GetVersion, ReadClipboardImage, ReadImageFile } from '../../../wailsjs/go/main/App';
 import { OnFileDrop, OnFileDropOff } from '../../../wailsjs/runtime/runtime';
 import { IMAGE_GAP, fitScale, viewportSize, clampPosition, keepInView, canPan, alignToDevicePixels } from '../../utils/editor-geometry';
+import { backdropLayout, backdropPreset, paintBackdrop, useBackdropPhoto } from '../../utils/backdrops';
 import './EditorWindow.css';
 
 // Node name of everything that counts as empty canvas for the marquee: the
@@ -17,6 +18,37 @@ const BACKGROUND_NAME = 'background-rect';
 const IMAGE_NAME = 'canvas-image';
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'];
+
+// Highlights work as a spotlight: the frame is dimmed except inside the
+// highlight boxes. Each box narrows the clip to "frame minus this box"
+// (even-odd); clips intersect, so the result is the frame minus the union of
+// the boxes and overlapping boxes both stay bright.
+type SpotlightBox = { x: number; y: number; width: number; height: number; rotation: number; radius: number };
+
+function drawSpotlight(
+  ctx: CanvasRenderingContext2D,
+  frame: { x: number; y: number; width: number; height: number },
+  boxes: SpotlightBox[],
+  dim: number,
+) {
+  ctx.save();
+  const base = ctx.getTransform();
+  for (const b of boxes) {
+    ctx.beginPath();
+    ctx.rect(frame.x, frame.y, frame.width, frame.height);
+    // Path points take the transform current when they are added: rotate the
+    // box around its (x, y) corner like Konva does, then go back for the clip.
+    ctx.translate(b.x, b.y);
+    ctx.rotate((b.rotation * Math.PI) / 180);
+    // roundRect scales radii that do not fit down to the box.
+    ctx.roundRect(0, 0, b.width, b.height, Math.max(0, b.radius));
+    ctx.setTransform(base);
+    ctx.clip('evenodd');
+  }
+  ctx.fillStyle = `rgba(0, 0, 0, ${dim})`;
+  ctx.fillRect(frame.x, frame.y, frame.width, frame.height);
+  ctx.restore();
+}
 
 const isImagePath = (path: string): boolean => {
   const dot = path.lastIndexOf('.');
@@ -44,6 +76,9 @@ const EditorWindow: React.FC = () => {
     setSelectedImage,
     selectedColor,
     selectedSize,
+    highlightOptions,
+    rectangleRadius,
+    backdrop,
     cropRegion,
     pendingCrop,
     setCropRegion,
@@ -60,6 +95,15 @@ const EditorWindow: React.FC = () => {
     undo,
     redo,
   } = useEditorStore();
+
+  // With a backdrop the picture is the frame plus a margin. viewFrame is what
+  // the editor fits, pans and exports; the document (images, annotations,
+  // clip) stays in frame.
+  const backdropBox = backdrop.enabled ? backdropLayout(frame, backdrop) : null;
+  const viewFrame = backdropBox ? backdropBox.outer : frame;
+  const backdropLook = backdropPreset(backdrop);
+  // A photo backdrop shows its stand-in colours until the photo is decoded.
+  const backdropPhoto = useBackdropPhoto(backdrop.enabled ? backdropLook.image : undefined);
 
   // One decoded element per image id. The map lives in a ref (elements are
   // not render state); loadedCount bumps when one finishes decoding.
@@ -132,8 +176,8 @@ const EditorWindow: React.FC = () => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const closeToast = useCallback(() => setToast(null), []);
   // Latest view for the drop handler, which is registered once.
-  const viewRef = useRef({ frame, stagePos, viewScale });
-  viewRef.current = { frame, stagePos, viewScale };
+  const viewRef = useRef({ frame: viewFrame, stagePos, viewScale });
+  viewRef.current = { frame: viewFrame, stagePos, viewScale };
 
   // Load version
   useEffect(() => {
@@ -176,11 +220,11 @@ const EditorWindow: React.FC = () => {
   // Fit the frame to the window and reset the view. Only view state changes:
   // images and annotations are in doc px and never move with the window size.
   const refit = useCallback(() => {
-    if (frame.width <= 0 || frame.height <= 0) return;
-    const scale = fitScale(frame.width, frame.height);
+    if (viewFrame.width <= 0 || viewFrame.height <= 0) return;
+    const scale = fitScale(viewFrame.width, viewFrame.height);
     const size = {
-      width: frame.width * scale,
-      height: frame.height * scale,
+      width: viewFrame.width * scale,
+      height: viewFrame.height * scale,
     };
     const view = viewportSize();
 
@@ -194,31 +238,32 @@ const EditorWindow: React.FC = () => {
     // capture, so anything else would undo the fit on open.
     setZoom(1);
     setStagePos(clampPosition({ x: 0, y: 0 }, size, view));
-  }, [frame.width, frame.height]);
+  }, [viewFrame.width, viewFrame.height]);
 
   // Set by an image move or resize just before it commits. The auto frame
   // follows the images, so such an edit changes the frame; refitting then
   // would rescale the whole view under the pointer.
   const keepViewRef = useRef(false);
-  const prevFrameRef = useRef(frame);
+  const prevFrameRef = useRef(viewFrame);
 
-  // Layout effect: a new frame (crop, undo of a crop) must not paint once with
-  // the previous fit scale. After an image move or resize the zoom stays and
-  // every doc point stays where it was on screen; anything else refits.
+  // Layout effect: a new frame (crop, undo of a crop, backdrop on or off) must
+  // not paint once with the previous fit scale. After an image move or resize
+  // the zoom stays and every doc point stays where it was on screen; anything
+  // else refits.
   useLayoutEffect(() => {
     const prev = prevFrameRef.current;
-    prevFrameRef.current = frame;
+    prevFrameRef.current = viewFrame;
     if (keepViewRef.current) {
       keepViewRef.current = false;
-      const size = { width: frame.width * scaleRatio, height: frame.height * scaleRatio };
+      const size = { width: viewFrame.width * scaleRatio, height: viewFrame.height * scaleRatio };
       setStageSize(size);
-      // Screen x = stagePos.x + (doc x - frame.x) * viewScale: shift the stage
-      // by the frame origin's move so the doc content does not jump, and pull
-      // it back only if part of the frame would leave the window.
+      // Screen x = stagePos.x + (doc x - viewFrame.x) * viewScale: shift the
+      // stage by the frame origin's move so the doc content does not jump, and
+      // pull it back only if part of the frame would leave the window.
       setStagePos((pos) => keepInView(
         {
-          x: pos.x + (frame.x - prev.x) * viewScale,
-          y: pos.y + (frame.y - prev.y) * viewScale,
+          x: pos.x + (viewFrame.x - prev.x) * viewScale,
+          y: pos.y + (viewFrame.y - prev.y) * viewScale,
         },
         { width: size.width * zoom, height: size.height * zoom },
         viewport,
@@ -227,7 +272,7 @@ const EditorWindow: React.FC = () => {
     }
     refit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frame.x, frame.y, frame.width, frame.height]);
+  }, [viewFrame.x, viewFrame.y, viewFrame.width, viewFrame.height]);
 
   // An image edit that left the frame unchanged must not carry the flag over
   // to a later frame change (undo, add), which has to refit.
@@ -709,8 +754,8 @@ const EditorWindow: React.FC = () => {
     const pointer = stage.getPointerPosition();
     if (!pointer) return { x: 0, y: 0 };
     return {
-      x: (pointer.x - stagePos.x) / viewScale + frame.x,
-      y: (pointer.y - stagePos.y) / viewScale + frame.y,
+      x: (pointer.x - stagePos.x) / viewScale + viewFrame.x,
+      y: (pointer.y - stagePos.y) / viewScale + viewFrame.y,
     };
   };
 
@@ -863,15 +908,16 @@ const EditorWindow: React.FC = () => {
           stroke: selectedColor,
           strokeWidth,
           fill: 'transparent',
+          cornerRadius: rectangleRadius,
         });
         break;
       case 'highlight':
+        // A spotlight box: drawSpotlight dims everything around it.
         setCurrentAnnotation({
           ...baseAnnotation,
           width: 0,
           height: 0,
-          fill: selectedColor,
-          opacity: 0.3,
+          cornerRadius: highlightOptions.radius,
         });
         break;
       case 'blur':
@@ -1443,6 +1489,7 @@ const EditorWindow: React.FC = () => {
             // Transparent fill makes the whole interior a selectable/draggable
             // area, and a wide hit-stroke makes the border easy to grab.
             fill={ann.fill || 'transparent'}
+            cornerRadius={(ann.cornerRadius ?? 0) * u}
             hitStrokeWidth={Math.max(ann.strokeWidth || 2 * px, 16 * px)}
             draggable={isDraggable}
             onClick={selectOnClick}
@@ -1464,8 +1511,10 @@ const EditorWindow: React.FC = () => {
             width={ann.width}
             height={ann.height}
             rotation={ann.rotation || 0}
-            fill={ann.fill}
-            opacity={ann.opacity}
+            // The box itself draws nothing (the spotlight shape dims around
+            // it); the transparent fill keeps its interior clickable.
+            fill="transparent"
+            cornerRadius={(ann.cornerRadius ?? 0) * u}
             stroke={isSelected ? '#007bff' : undefined}
             strokeWidth={isSelected ? 2 * px : 0}
             draggable={isDraggable}
@@ -1794,6 +1843,11 @@ const EditorWindow: React.FC = () => {
     return <div className="editor-loading">Loading...</div>;
   }
 
+  // Highlight boxes, including the one being drawn, for the spotlight shade.
+  const spotlightBoxes = (currentAnnotation ? [...annotations, currentAnnotation] : annotations).filter(
+    (a) => a.type === 'highlight',
+  );
+
   return (
     <div className="editor-window">
       <Toolbar />
@@ -1811,16 +1865,47 @@ const EditorWindow: React.FC = () => {
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
         >
-          {/* The layer offset puts the frame origin at the stage origin; the
-              clip keeps everything outside the frame (cropped-away pixels,
-              annotations that left it) off screen. */}
+          {/* Backdrop: the background picture over the whole view frame and
+              the shot's shadow, under the document. */}
+          {backdropBox && (
+            <Layer offsetX={viewFrame.x} offsetY={viewFrame.y} listening={false}>
+              <Shape sceneFunc={(ctx) => paintBackdrop(ctx._context, viewFrame, backdropLook, backdropPhoto)} />
+              {backdrop.shadow && (
+                <Rect
+                  x={frame.x}
+                  y={frame.y}
+                  width={frame.width}
+                  height={frame.height}
+                  cornerRadius={backdropBox.radius}
+                  // Hidden under the shot; white, so a transparent shot does
+                  // not show a black box.
+                  fill="#ffffff"
+                  shadowColor="#000000"
+                  shadowBlur={backdropBox.shadowBlur}
+                  shadowOffsetY={backdropBox.shadowOffset}
+                  shadowOpacity={0.45}
+                />
+              )}
+            </Layer>
+          )}
+          {/* The layer offset puts the view frame origin at the stage origin;
+              the clip keeps everything outside the frame (cropped-away pixels,
+              annotations that left it) off screen. With a backdrop the clip
+              has the shot's rounded corners. */}
           <Layer
-            offsetX={frame.x}
-            offsetY={frame.y}
+            offsetX={viewFrame.x}
+            offsetY={viewFrame.y}
             clipX={frame.x}
             clipY={frame.y}
             clipWidth={frame.width}
             clipHeight={frame.height}
+            clipFunc={backdropBox && backdropBox.radius > 0
+              ? (ctx) => {
+                  const c = ctx._context;
+                  c.beginPath();
+                  c.roundRect(frame.x, frame.y, frame.width, frame.height, backdropBox.radius);
+                }
+              : undefined}
           >
             {/* Background under the images, covering the frame. A shot with one
                 image keeps its own pixels (a transparent PNG stays transparent);
@@ -1860,16 +1945,49 @@ const EditorWindow: React.FC = () => {
                 />
               ) : null;
             })}
-            {/* Frame border */}
-            <Rect
-              x={frame.x}
-              y={frame.y}
-              width={frame.width}
-              height={frame.height}
-              stroke="rgba(139, 92, 246, 0.4)"
-              strokeWidth={2 * px}
-              listening={false}
-            />
+            {/* Frame border; a backdrop already shows where the shot ends. */}
+            {!backdropBox && (
+              <Rect
+                x={frame.x}
+                y={frame.y}
+                width={frame.width}
+                height={frame.height}
+                stroke="rgba(139, 92, 246, 0.4)"
+                strokeWidth={2 * px}
+                listening={false}
+              />
+            )}
+            {/* Under the other annotations, so boxes and arrows outside a
+                highlight stay at full brightness. */}
+            {spotlightBoxes.length > 0 && (
+              <Shape
+                listening={false}
+                // Read each box from its node when there is one: during a drag
+                // or resize the node moves before the store does, and the
+                // bright area must follow it.
+                sceneFunc={(ctx) =>
+                  drawSpotlight(
+                    ctx._context,
+                    frame,
+                    spotlightBoxes.map((a) => {
+                      const node = shapeRefs.current[a.id];
+                      const radius = (a.cornerRadius ?? 0) * (a.unit ?? 1);
+                      return node
+                        ? {
+                            x: node.x(),
+                            y: node.y(),
+                            width: node.width() * node.scaleX(),
+                            height: node.height() * node.scaleY(),
+                            rotation: node.rotation(),
+                            radius,
+                          }
+                        : { x: a.x, y: a.y, width: a.width || 0, height: a.height || 0, rotation: a.rotation || 0, radius };
+                    }),
+                    highlightOptions.dim,
+                  )
+                }
+              />
+            )}
             {annotations.map(renderAnnotation)}
             {currentAnnotation && renderAnnotation(currentAnnotation)}
             {/* Marquee selection rectangle */}
@@ -1953,7 +2071,7 @@ const EditorWindow: React.FC = () => {
               handles and the hover box of an annotation at the frame edge reach
               outside it. Same offset as the document layer, so both share doc px.
               The export region is the frame, so nothing outside it is saved. */}
-          <Layer name="editor-chrome" offsetX={frame.x} offsetY={frame.y}>
+          <Layer name="editor-chrome" offsetX={viewFrame.x} offsetY={viewFrame.y}>
             {/* Marks the image the crop tool will crop, before and while the
                 region is drawn. */}
             {cropTarget && (
@@ -2074,8 +2192,8 @@ const EditorWindow: React.FC = () => {
             h = ann.height || 0;
             pad = 4 * u;
           }
-          const left = rect.left + (lx - frame.x) * viewScale + stagePos.x;
-          const top = rect.top + (ly - frame.y) * viewScale + stagePos.y;
+          const left = rect.left + (lx - viewFrame.x) * viewScale + stagePos.x;
+          const top = rect.top + (ly - viewFrame.y) * viewScale + stagePos.y;
           return (
             <textarea
               ref={textEditRef}
@@ -2112,7 +2230,7 @@ const EditorWindow: React.FC = () => {
           );
         })()}
       </div>
-      <ActionBar stageRef={stageRef} frame={frame} />
+      <ActionBar stageRef={stageRef} frame={viewFrame} />
       {toast && <Toast message={toast.message} type={toast.type} onClose={closeToast} />}
       <ZoomBar zoom={zoom} onZoomChange={setZoom} scaleRatio={scaleRatio} />
       {version && (

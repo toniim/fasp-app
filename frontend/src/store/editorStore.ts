@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { Annotation, AnnotationTool, ArrangeMode, CanvasImage, DocSnapshot, EditorState, CropRegion, Frame } from '../types';
+import { Annotation, AnnotationTool, ArrangeMode, BackdropSettings, CanvasImage, DocSnapshot, EditorState, CropRegion, Frame, HighlightOptions } from '../types';
+import { DEFAULT_BACKDROP } from '../utils/backdrops';
 import { IMAGE_GAP, autoFrame, boundsOf, growFrame } from '../utils/editor-geometry';
 import { arrange } from '../utils/image-layout';
 
@@ -41,6 +42,9 @@ interface EditorStore extends EditorState {
   setSelectedTool: (tool: AnnotationTool) => void;
   setSelectedColor: (color: string) => void;
   setSelectedSize: (size: number) => void;
+  setHighlightOptions: (options: Partial<HighlightOptions>) => void;
+  setRectangleRadius: (radius: number) => void;
+  setBackdrop: (settings: Partial<BackdropSettings>) => void;
   setCropRegion: (region: CropRegion | null) => void;
   applyCrop: () => void;
   addAnnotation: (annotation: Annotation) => void;
@@ -70,6 +74,9 @@ const initialState: EditorState = {
   selectedImageId: null,
   selectedColor: '#ff0000',
   selectedSize: 2, // Default stroke width / font size multiplier
+  highlightOptions: { dim: 0.5, radius: 8 },
+  rectangleRadius: 0,
+  backdrop: DEFAULT_BACKDROP,
   cropRegion: null,
   pendingCrop: null,
   history: [
@@ -384,6 +391,18 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     setSelectedSize: (size: number) => {
       set({ selectedSize: size });
+    },
+
+    setHighlightOptions: (options: Partial<HighlightOptions>) => {
+      set((state) => ({ highlightOptions: { ...state.highlightOptions, ...options } }));
+    },
+
+    setRectangleRadius: (radius: number) => {
+      set({ rectangleRadius: radius });
+    },
+
+    setBackdrop: (settings: Partial<BackdropSettings>) => {
+      set((state) => ({ backdrop: { ...state.backdrop, ...settings } }));
     },
 
     setCropRegion: (region: CropRegion | null) => {

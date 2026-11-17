@@ -80,6 +80,10 @@ export interface Annotation {
   curvature?: number; // 0 = straight, positive = curve right, negative = curve left
   // For numbered arrows
   number?: number; // The number to display in the circle
+  // For highlights and rectangles: corner radius in screen px at creation
+  // (times unit gives doc px), so the rounding keeps its proportion to the
+  // image. Absent means 0.
+  cornerRadius?: number;
   // Document pixels per screen pixel at creation time (1 / scaleRatio). Fixed
   // visual sizes owned by the annotation (arrow head, numbered circle, label
   // gap, blur tile) are multiplied by this so they keep their proportion to
@@ -123,6 +127,25 @@ export interface DocSnapshot {
 
 export type ArrangeMode = 'row' | 'column' | 'grid';
 
+// A background picture behind the shot with a margin around it, for sharing.
+// Part of the exported picture; a setting like colour and size (kept across
+// shots, not part of undo).
+export interface BackdropSettings {
+  enabled: boolean;
+  presetId: string;
+  padding: number; // margin, % of the shot's longer side
+  radius: number; // corner radius of the shot (px of a 1200 px shot)
+  shadow: boolean;
+  // The user's own background image as a data URL, used when presetId is
+  // 'custom'. Kept for the session only.
+  customImage?: string;
+}
+
+export interface HighlightOptions {
+  dim: number;
+  radius: number;
+}
+
 // auto: the frame is the images' bounding box plus padding and follows every
 // image change. manual: a canvas crop fixed it; it only grows when an image is
 // added outside it.
@@ -145,6 +168,14 @@ export interface EditorState {
   selectedImageId: string | null;
   selectedColor: string;
   selectedSize: number; // Stroke width for shapes, font size for text
+  // Settings of the highlight tool. Like colour and size they are tool
+  // settings, not part of undo. dim (0..1) is how dark everything outside the
+  // highlight boxes gets; one shade covers the picture, so it applies to every
+  // box. radius is the corner radius new boxes get (screen px).
+  highlightOptions: HighlightOptions;
+  // Corner radius new rectangles get (screen px); a tool setting like above.
+  rectangleRadius: number;
+  backdrop: BackdropSettings;
   cropRegion: CropRegion | null; // doc px
   // An image just added by Add shot that is waiting for its crop. Not part of
   // undo. step is the history step that added it, so Cancel can undo exactly

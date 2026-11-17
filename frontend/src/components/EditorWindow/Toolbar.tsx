@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import { AnnotationTool } from '../../types';
 import { CaptureActiveDisplay, OpenImageDialog, ReadImageFile, ShowWindow } from '../../../wailsjs/go/main/App';
 import { WindowHide } from '../../../wailsjs/runtime/runtime';
 import Toast from '../Toast/Toast';
+import BackdropPanel from './BackdropPanel';
 
 // SVG Icons - Clean, macOS-style line icons
 const Icons = {
@@ -127,6 +128,13 @@ const Icons = {
       <rect x="2" y="6" width="7" height="7" rx="1" fill="currentColor" fillOpacity="0.3" />
     </svg>
   ),
+  // A shot on a background with a margin.
+  backdrop: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1.5" y="2" width="13" height="12" rx="2" />
+      <rect x="4.5" y="5" width="7" height="6" rx="1" fill="currentColor" fillOpacity="0.35" />
+    </svg>
+  ),
 };
 
 const Toolbar: React.FC = () => {
@@ -134,7 +142,44 @@ const Toolbar: React.FC = () => {
     selectedTool, setSelectedTool, selectedColor, setSelectedColor, selectedSize, setSelectedSize, undo, redo,
     images, selectedImageId, background, setBackground, addImage, bringForward, sendBackward,
     imageGap, arrangeImages, setImageGap,
+    annotations, selectedAnnotationId, updateAnnotation, highlightOptions, setHighlightOptions,
+    rectangleRadius, setRectangleRadius, backdrop,
   } = useEditorStore();
+  const [backdropOpen, setBackdropOpen] = useState(false);
+  const closeBackdrop = useCallback(() => setBackdropOpen(false), []);
+  // A selected highlight or rectangle shows its tool's settings too, so it can
+  // be tuned with the select tool after drawing.
+  const selectedAnnotation = annotations.find((a) => a.id === selectedAnnotationId);
+  const selectedShape =
+    selectedAnnotation?.type === 'highlight' || selectedAnnotation?.type === 'rectangle' ? selectedAnnotation : null;
+  const optionsTool: AnnotationTool = selectedShape ? selectedShape.type : selectedTool;
+
+  // Corners slider of the highlight and rectangle tools: sets the radius new
+  // boxes get and, when a box of that kind is selected, changes that box.
+  const cornersSlider = (kind: 'highlight' | 'rectangle', radius: number, setRadius: (r: number) => void) => {
+    const value = selectedShape ? selectedShape.cornerRadius ?? 0 : radius;
+    return (
+      <div className="toolbar-size">
+        <label className="size-label" htmlFor={`${kind}-radius`}>Corners</label>
+        <input
+          id={`${kind}-radius`}
+          type="range"
+          min="0"
+          max="40"
+          step="1"
+          value={value}
+          onChange={(e) => {
+            const r = Number(e.target.value);
+            setRadius(r);
+            if (selectedShape) updateAnnotation(selectedShape.id, { cornerRadius: r });
+          }}
+          className="size-slider"
+          title={selectedShape ? `Corner radius of the selected ${kind}` : `Corner radius of new ${kind}s`}
+        />
+        <span className="size-value">{`${value}px`}</span>
+      </div>
+    );
+  };
   const [toast, setToast] = useState<{ message: string; type: 'error' } | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -222,28 +267,53 @@ const Toolbar: React.FC = () => {
             </button>
           ))}
         </div>
-        {/* Size slider - always visible */}
-        <div className="toolbar-size">
-          <label className="size-label">Size</label>
-          <input
-            type="range"
-            min="1"
-            max="5"
-            value={selectedSize}
-            onChange={(e) => setSelectedSize(Number(e.target.value))}
-            className="size-slider"
-            title={`Size: ${selectedSize} (${modKey}+1-5 or [ / ])`}
-          />
-          <span className="size-value">
-            {selectedTool === 'text'
-              ? `${selectedSize === 1 ? 12 : selectedSize === 2 ? 16 : selectedSize === 3 ? 20 : selectedSize === 4 ? 24 : 32}px`
-              : `${selectedSize === 1 ? 1 : selectedSize === 2 ? 2 : selectedSize === 3 ? 4 : selectedSize === 4 ? 6 : 8}px`
-            }
-          </span>
-        </div>
+        {/* Settings of the tool in use. Highlight has its own; the drawing
+            tools share size and colour, and the rectangle adds corners. */}
+        {optionsTool === 'highlight' && (
+          <>
+            <div className="toolbar-size">
+              <label className="size-label" htmlFor="highlight-dim">Darkness</label>
+              <input
+                id="highlight-dim"
+                type="range"
+                min="0"
+                max="90"
+                step="5"
+                value={Math.round(highlightOptions.dim * 100)}
+                onChange={(e) => setHighlightOptions({ dim: Number(e.target.value) / 100 })}
+                className="size-slider"
+                title="How dark the picture gets outside the highlighted areas"
+              />
+              <span className="size-value">{`${Math.round(highlightOptions.dim * 100)}%`}</span>
+            </div>
+            {cornersSlider('highlight', highlightOptions.radius, (radius) => setHighlightOptions({ radius }))}
+          </>
+        )}
+        {optionsTool !== 'highlight' && (
+          <div className="toolbar-size">
+            <label className="size-label">Size</label>
+            <input
+              type="range"
+              min="1"
+              max="5"
+              value={selectedSize}
+              onChange={(e) => setSelectedSize(Number(e.target.value))}
+              className="size-slider"
+              title={`Size: ${selectedSize} (${modKey}+1-5 or [ / ])`}
+            />
+            <span className="size-value">
+              {selectedTool === 'text'
+                ? `${selectedSize === 1 ? 12 : selectedSize === 2 ? 16 : selectedSize === 3 ? 20 : selectedSize === 4 ? 24 : 32}px`
+                : `${selectedSize === 1 ? 1 : selectedSize === 2 ? 2 : selectedSize === 3 ? 4 : selectedSize === 4 ? 6 : 8}px`
+              }
+            </span>
+          </div>
+        )}
+        {optionsTool === 'rectangle' && cornersSlider('rectangle', rectangleRadius, setRectangleRadius)}
       </div>
+      {/* Highlight has no colour; the empty slot keeps the bar from shifting. */}
       <div className="toolbar-colors">
-        {colors.map((color) => (
+        {optionsTool !== 'highlight' && colors.map((color) => (
           <button
             key={color.value}
             className={`color-button ${selectedColor === color.value ? 'active' : ''}`}
@@ -254,15 +324,27 @@ const Toolbar: React.FC = () => {
             title={color.label}
           />
         ))}
-        <input
-          type="color"
-          value={selectedColor}
-          onChange={(e) => setSelectedColor(e.target.value)}
-          title="Custom color"
-          style={{ marginLeft: '4px', width: '20px', height: '20px', cursor: 'pointer', borderRadius: '4px' }}
-        />
+        {optionsTool !== 'highlight' && (
+          <input
+            type="color"
+            value={selectedColor}
+            onChange={(e) => setSelectedColor(e.target.value)}
+            title="Custom color"
+            style={{ marginLeft: '4px', width: '20px', height: '20px', cursor: 'pointer', borderRadius: '4px' }}
+          />
+        )}
       </div>
       <div className="toolbar-images">
+        <button
+          className={`action-button backdrop-toggle ${backdrop.enabled ? 'active' : ''}`}
+          onClick={() => setBackdropOpen((open) => !open)}
+          title="Backdrop: put the shot on a background for sharing"
+          aria-label="Backdrop"
+          aria-expanded={backdropOpen}
+        >
+          {Icons.backdrop}
+        </button>
+        {backdropOpen && <BackdropPanel onClose={closeBackdrop} />}
         <button
           className="action-button"
           onClick={handleAddImage}
