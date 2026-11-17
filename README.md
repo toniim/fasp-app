@@ -15,6 +15,7 @@
 - **Screen recording**: record the full screen, one window or a region to MP4 (H.264 + AAC), with computer sound and/or a microphone, using the native hardware encoder. Fasp's own recording bar never appears in the video.
 - **Built-in player**: a recording opens in the editor's player, ready to copy as a file, save or upload.
 - **Crop** after capturing, before you share.
+- **Backdrop**: put the shot on a background with a margin, rounded corners and a shadow, ready to post.
 - **Zoom and pan**: zoom with Ctrl + mouse wheel, hold Shift and drag to move around a large capture.
 - **Copy, save or upload**: copy to the clipboard, quick-save to a folder, save as PNG or JPEG, or upload to a fasp server and get a link.
 - **Tray icon** with recent screenshots, and an option to start at login.
@@ -50,7 +51,7 @@ Requires macOS 14 (Sonoma) or later, on Apple Silicon or Intel.
 
 The first time you record with the **Microphone** ticked, macOS asks for microphone access; click **Allow**. If you clicked **Don't Allow**, turn **fasp** on under **System Settings → Privacy & Security → Microphone**.
 
-**After updating**, repeat steps 3 and 4: because the app is not signed with a Developer ID, macOS treats each version as a new app and drops the old Screen Recording permission. If the toggle is already on but captures fail, remove **fasp** from that list with **−** (or run `tccutil reset ScreenCapture com.wails.fasp`) and grant it again.
+**After updating**, repeat step 3. Screen Recording stays allowed: releases are signed with the same certificate every time, so macOS sees the new version as the same app. The one exception is the first update from v26.11.4 or older, which were signed differently: grant Screen Recording once more. If the toggle is already on but captures fail, remove **fasp** from that list with **−** (or run `tccutil reset ScreenCapture com.wails.fasp`) and grant it again.
 
 You can also build it yourself; see [Development](#development).
 
@@ -66,7 +67,7 @@ You can also build it yourself; see [Development](#development).
 | Start / stop recording | `Ctrl+PrintScreen` | `Cmd+Shift+8` |
 
 Both capture the screen under the mouse cursor and open it in the editor with the **Crop** tool ready: drag to keep part of it, or pick another tool to annotate the whole capture.
-The editor hides itself first, so it never appears in its own screenshot.
+A hotkey (or the tray menu) takes the screen as it is: if the editor is open, it is in the shot, which is handy for showing Fasp itself. The **Capture** buttons inside Fasp and **Add screenshot** in the editor hide the editor first, so it is not in those shots.
 
 You can also capture from the tray menu or **File → Capture Screenshot**, and open an existing image with **File → Open Image…** (`Ctrl+O`).
 
@@ -76,7 +77,12 @@ Press the **Capture Zone** hotkey (or **File → Capture Zone**, or the tray men
 
 Because the picture is taken the moment you press the hotkey, you can grab things that disappear as soon as you click: an open menu, a tooltip, a hover state, a frame of a video.
 
-- `Enter` takes the whole screen, `Esc` or a right-click cancels (the editor comes back if it was open).
+- Click without dragging to take the window under the mouse. Before you click, that window is shown undimmed with a border and its size, so you see what you will get.
+
+  ![Capture Zone with the mouse over a window: the window is undimmed with a blue border and its size, the rest of the screen is dimmed](docs/screenshots/zone-click-window.png)
+
+  Only the part of the window you see on the frozen screen is taken: whatever covered the window then is in the picture too. A click on the desktop does nothing.
+- `Enter` takes the whole screen, `Esc` or a right-click cancels: the screen stays as it was and the app you were in keeps the focus. The editor comes back only if you started from it.
 - A size label shows the selection in pixels while you drag.
 - With several displays, the display under the mouse freezes.
 - If the editor already holds a shot, the new zone replaces it. To keep the current shot and add another one next to it, use **Add screenshot** in the editor instead (see [Several images on one canvas](#several-images-on-one-canvas)).
@@ -89,7 +95,9 @@ Press the **Start / stop recording** hotkey (or **File → Record Screen…**, o
 |---|---|
 | Full screen | The screen under the mouse pointer |
 | Window | One window, picked from a list, even while other windows cover it. Recording stops by itself when the window closes |
-| Region | An area you drag on the frozen screen after pressing **Select Region** |
+| Region | An area you drag on the frozen screen after pressing **Select Region**, or the area of the window you click there |
+
+![Record Screen dialog with Window mode selected, a window list, audio sources and frame rate](docs/screenshots/record-dialog.png)
 
 Pick the frame rate (15, 30 or 60 fps), then tick **Computer sound** (everything the computer plays) and/or **Microphone** (pick the device). Both are mixed into one audio track. With speakers, the microphone also hears the computer sound, so use headphones to avoid an echo. Your choices become the defaults for the next recording.
 
@@ -98,6 +106,8 @@ On macOS, computer sound needs no extra permission (it comes with Screen Recordi
 While recording, Fasp shrinks to a small bar at the top of the screen with a timer and **Stop**. The bar never appears in the video. Press the hotkey again, click **Stop**, or use the tray menu to finish.
 
 The MP4 is saved in the Quick Save folder (`Recording_<date>_<time>.mp4`) and opens right away in the editor's player, just as a screenshot opens in the editor:
+
+![A recording open in the player, with Copy, Save As, Show in Folder and Upload](docs/screenshots/video-player.png)
 
 | Button | Shortcut | Result |
 |---|---|---|
@@ -120,12 +130,12 @@ Pick a tool in the toolbar or press its key, choose a colour and a size, then dr
 |---|---|---|
 | Select | `S` | Select, move, resize and rotate annotations; drag on empty space to select several |
 | Crop | `C` | Drag the area to keep, then **Apply Crop** (`Enter`) or **Cancel** (`Esc`). Crops the selected image, or the whole canvas when no image is selected |
-| Rectangle | `R` | Outline an area |
+| Rectangle | `R` | Outline an area. **Corners** in the toolbar rounds the corners of new rectangles, or of the selected one |
 | Arrow | `A` | Point at something |
 | Numbered arrow | `N` | Arrow with a step number that counts up: 1, 2, 3… |
 | Arrow with text | `W` | Arrow with a label at its tail |
 | Text | `T` | Drag a box and type; `Enter` adds a line, `Esc` or clicking away finishes |
-| Highlight | `H` | Translucent marker over text |
+| Highlight | `H` | Spotlight: the box stays bright and the rest of the picture is dimmed. Several boxes stay bright together. While it is in use (or a highlight is selected) the toolbar shows **Darkness** (how dark the rest gets) and **Corners** (corner radius) |
 | Blur | `B` | Opaque pattern that hides passwords, keys and personal data |
 
 Size: `[` and `]`, or `Ctrl+1` … `Ctrl+5`. Undo `Ctrl+Z`, redo `Ctrl+Shift+Z`. Delete the selection with `Delete`, `Backspace` or `Ctrl+D`; select everything with `Ctrl+A`. Paste an image from the clipboard with `Ctrl+V`.
@@ -134,7 +144,11 @@ Size: `[` and `]`, or `Ctrl+1` … `Ctrl+5`. Undo `Ctrl+Z`, redo `Ctrl+Shift+Z`.
 
 ### Several images on one canvas
 
-One shot can hold several images, for example two screens side by side or a before/after pair. Add one with:
+One shot can hold several images, for example two screens side by side or a before/after pair.
+
+![Two screenshots side by side on one canvas with a coloured background, a box, numbered arrows and a highlight](docs/screenshots/multi-image.png)
+
+Add one with:
 
 | Way | Result |
 |---|---|
@@ -152,6 +166,18 @@ With the **Select** tool, click an image to select it, then:
 With two or more images, the **Arrange in a row**, **Arrange in a column** and **Arrange in a grid** buttons line them up, and the gap field next to them sets the space between them. The canvas grows to fit the images, and the **Canvas background color** fills the space around them.
 
 Copy, Save and Upload export the whole canvas at the images' full resolution. Undo and redo cover every image change.
+
+### Backdrop for sharing
+
+Click **Backdrop** in the toolbar to put the shot on a background before you share it. Copy, Save and Upload then export the shot with the background around it.
+
+![A screenshot exported with a backdrop: rounded corners and a soft shadow on a colourful gradient](docs/screenshots/backdrop.png)
+
+- Pick a background: twelve nature **Photos** (mountains, fog, aurora, dunes, sea), twelve **Colors** (gradients and soft colour blends), or **Choose image…** to use a picture of your own (kept until you quit Fasp). Picking one turns the backdrop on; untick **Put the shot on a background** to turn it off.
+- The photos are public domain (CC0) pictures from Wikimedia Commons; their authors and sources are listed in [`frontend/src/assets/backdrops/CREDITS.md`](frontend/src/assets/backdrops/CREDITS.md).
+- **Padding** sets the margin around the shot (a percentage of its longer side), **Corners** rounds the shot's corners, **Shadow** adds a soft shadow under it.
+- Sizes follow the shot, so a Retina capture and a small one look the same.
+- The backdrop stays on for the next shots until you turn it off. Annotations stay on the shot, and cropping crops the shot, not the backdrop.
 
 ### Zoom and pan
 
@@ -196,7 +222,7 @@ Settings are stored in `%APPDATA%\fasp\settings.json` on Windows and `~/Library/
 
 - **A hotkey does nothing (Windows).** Another app may own it. Windows 11 can reserve `PrintScreen` for the Snipping Tool: turn off **Settings → Accessibility → Keyboard → Use the Print screen key to open screen capture**, or pick another hotkey in Fasp.
 - **macOS won't open the app, or says it is damaged.** See step 3 of [Install → macOS](#macos): **Open Anyway** in Privacy & Security, or `xattr -dr com.apple.quarantine /Applications/fasp.app`.
-- **Captures are black or only show the wallpaper (macOS).** Grant **Screen Recording** permission and restart Fasp. After an update, remove fasp from the Screen Recording list and grant it again. For your own builds, `make build-darwin-signed` with a local certificate (`scripts/create-dev-certificate.sh`) keeps the permission across rebuilds.
+- **Captures are black or only show the wallpaper (macOS).** Grant **Screen Recording** permission and restart Fasp. If it is already on, remove fasp from the Screen Recording list and grant it again (needed once after updating from v26.11.4 or older). For your own builds, `make build-darwin-signed` with a local certificate (`scripts/create-dev-certificate.sh`) keeps the permission across rebuilds.
 - **Cmd+Shift+5 opens the macOS screenshot toolbar instead (macOS).** Pick another hotkey in Fasp Settings, or turn off that shortcut under **System Settings → Keyboard → Keyboard Shortcuts → Screenshots**.
 - **Recording says the microphone access is denied (Windows).** Turn on **Settings → Privacy & security → Microphone → Let desktop apps access your microphone**.
 - **Recording says microphone permission is required (macOS).** Turn **fasp** on under **System Settings → Privacy & Security → Microphone**, then start the recording again.
@@ -227,7 +253,9 @@ Without `make`, run the same `wails build` command with `GOTOOLCHAIN` set to tha
 
 1. Bump `Version` in `internal/version/version.go` (format `vYY.M.PATCH`) and merge it to `main`.
 2. Run `make release` (or `scripts/release.sh`): it tags the commit and pushes the tag.
-3. The Release workflow builds the Windows app and installer and the macOS app (universal, ad-hoc signed and zipped by `scripts/package-macos.sh`, then launched by `scripts/smoke-macos.sh`), and publishes them together as a GitHub release.
+3. The Release workflow builds the Windows app and installer and the macOS app (universal, signed with the "Fasp Dev" certificate and zipped by `scripts/package-macos.sh`, then launched by `scripts/smoke-macos.sh`), and publishes them together as a GitHub release.
+
+The macOS certificate lives in the repository secrets `MACOS_CERT_P12` and `MACOS_CERT_PASSWORD`. Store it once from a Mac that has it in the keychain (made by `scripts/create-dev-certificate.sh`) with `scripts/upload-signing-cert.sh`. A tag build fails without these secrets, so a release is never signed ad-hoc by accident; local builds signed by `make build-darwin-signed` use the same certificate and share the Screen Recording permission with releases.
 
 Every pull request also builds, packages and smoke-tests the macOS app; the zip is attached to the CI run as the `fasp-macos-universal` artifact for 7 days. To build release files without publishing, run the Release workflow by hand from the Actions tab.
 
