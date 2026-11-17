@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
-import { CaptureActiveDisplay, CaptureZone, IsRecording, OpenImageDialog, ReadImageFile, ShowWindow } from '../wailsjs/go/main/App';
+import { CaptureActiveDisplay, CaptureZone, IsRecording, OpenImageDialog, ReadImageFile, ShowWindow } from '../bindings/github.com/heytonyne/fasp/app';
 import { useEditorStore, selectHasContent } from './store/editorStore';
 import EditorWindow from './components/EditorWindow/EditorWindow';
 import SettingsWindow from './components/SettingsWindow/SettingsWindow';
@@ -10,7 +10,7 @@ import RecordDialog from './components/Recording/RecordDialog';
 import RecordingBar from './components/Recording/RecordingBar';
 import RecordingDone, { RecordingResult } from './components/Recording/RecordingDone';
 import VideoViewer, { VideoInfo } from './components/VideoViewer/VideoViewer';
-import { EventsOn, WindowHide } from '../wailsjs/runtime/runtime';
+import { Events, Window } from '@wailsio/runtime';
 
 interface ToastState {
   message: string;
@@ -75,41 +75,41 @@ function App() {
   useEffect(() => {
     // A hotkey (or the tray menu) captures the screen as it is, Fasp's own
     // window included, so Fasp itself can be shown in a shot.
-    const unsubscribeCapture = EventsOn('hotkey:capture', () => {
+    const unsubscribeCapture = Events.On('hotkey:capture', () => {
       handleCapture(false);
     });
 
     // Region capture uses the same flow: the capture opens in the crop tool,
     // so the user drags the part of the screen they want to keep.
-    const unsubscribeRegion = EventsOn('hotkey:capture_region', () => {
+    const unsubscribeRegion = Events.On('hotkey:capture_region', () => {
       handleCapture(false);
     });
 
-    const unsubscribeSettings = EventsOn('open:settings', () => {
+    const unsubscribeSettings = Events.On('open:settings', () => {
       setShowSettings(true);
       ShowWindow();
     });
 
-    const unsubscribeOpenImage = EventsOn('open:image', () => {
+    const unsubscribeOpenImage = Events.On('open:image', () => {
       handleOpenImage();
     });
 
-    const unsubscribeZone = EventsOn('hotkey:capture_zone', () => {
+    const unsubscribeZone = Events.On('hotkey:capture_zone', () => {
       handleCaptureZone(false);
     });
 
-    const unsubscribeOpenRecord = EventsOn('open:record', () => {
+    const unsubscribeOpenRecord = Events.On('open:record', () => {
       setRecordingDone(null);
       setShowRecordDialog(true);
     });
 
-    const unsubscribeRecStarted = EventsOn('recording:started', (status) => {
+    const unsubscribeRecStarted = Events.On('recording:started', ({ data: status }) => {
       setShowRecordDialog(false);
       setRecordingDone(null);
       setRecording(status);
     });
 
-    const unsubscribeRecFinished = EventsOn('recording:finished', (result: RecordingResult) => {
+    const unsubscribeRecFinished = Events.On('recording:finished', ({ data: result }: { data: RecordingResult }) => {
       setRecording(null);
       if (result.url) {
         // Play it right away in the editor, like a fresh screenshot.
@@ -119,7 +119,7 @@ function App() {
       }
     });
 
-    const unsubscribeOpenVideo = EventsOn('open:video', (v: VideoInfo) => {
+    const unsubscribeOpenVideo = Events.On('open:video', ({ data: v }: { data: VideoInfo }) => {
       setRecordingDone(null);
       setVideo(v);
     });
@@ -151,11 +151,12 @@ function App() {
 
       if (hideFasp) {
         // Give the compositor a beat to actually take it off screen.
-        WindowHide();
+        Window.Hide();
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
 
       const result = await CaptureActiveDisplay();
+      if (!result) throw new Error('the capture returned no image');
 
       // Show window with the captured image
       ShowWindow();
@@ -183,7 +184,7 @@ function App() {
     try {
       setIsCapturing(true);
       if (hideFasp) {
-        WindowHide();
+        Window.Hide();
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
 

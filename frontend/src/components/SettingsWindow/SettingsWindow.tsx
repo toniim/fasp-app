@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GetSettings, UpdateSetting, TestUploadConnection, ListMicrophones } from '../../../wailsjs/go/main/App';
+import { GetSettings, UpdateSetting, TestUploadConnection, ListMicrophones } from '../../../bindings/github.com/heytonyne/fasp/app';
 import ShortcutField from './ShortcutField';
 import { Settings } from '../../types';
 import './SettingsWindow.css';
@@ -38,6 +38,7 @@ const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   const loadSettings = async () => {
     try {
       const data = await GetSettings();
+      if (!data) throw new Error('the settings could not be read');
       setSettings(data as any);
       setHotkeys({
         capture_fullscreen: data.hotkeys?.capture_fullscreen || data.hotkeys?.capture || '',

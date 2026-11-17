@@ -1,5 +1,5 @@
 import React from 'react';
-import { OpenPath, RevealPath } from '../../../wailsjs/go/main/App';
+import { OpenPath, RevealPath } from '../../../bindings/github.com/heytonyne/fasp/app';
 import { formatDuration } from './RecordingBar';
 import './Recording.css';
 

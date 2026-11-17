@@ -1,4 +1,4 @@
-import { UploadInit, UploadComplete, IsUploadConfigured } from '../../wailsjs/go/main/App';
+import { UploadInit, UploadComplete, IsUploadConfigured } from '../../bindings/github.com/heytonyne/fasp/app';
 
 export interface InitResponse {
   file_id: string;
@@ -23,6 +23,7 @@ class UploadService {
   async init(filename: string, size: number, contentType: string): Promise<InitResponse> {
     try {
       const response = await UploadInit(filename, size, contentType);
+      if (!response) throw new Error('the server sent no upload details');
       return response;
     } catch (error) {
       console.error('Failed to initialize upload:', error);
@@ -102,6 +103,7 @@ class UploadService {
   async complete(fileID: string): Promise<CompleteResponse> {
     try {
       const response = await UploadComplete(fileID);
+      if (!response) throw new Error('the server sent no upload result');
       return response;
     } catch (error) {
       console.error('Failed to complete upload:', error);

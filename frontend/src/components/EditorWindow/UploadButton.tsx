@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { uploadService } from '../../services/upload-service';
 import { useUpload } from '../../hooks/use-upload';
-import { GetSettings } from '../../../wailsjs/go/main/App';
-import { ClipboardSetText } from '../../../wailsjs/runtime/runtime';
+import { GetSettings } from '../../../bindings/github.com/heytonyne/fasp/app';
+import { Clipboard } from '@wailsio/runtime';
 import { AfterUploadAction } from '../../types';
 
 export interface UploadFile {
@@ -38,7 +38,7 @@ export const UploadButton: React.FC<UploadButtonProps> = ({
 
     // Load after upload action setting
     GetSettings().then(settings => {
-      if (settings.after_upload_action) {
+      if (settings?.after_upload_action) {
         setAfterUploadAction(settings.after_upload_action as AfterUploadAction);
       }
     });
@@ -62,14 +62,14 @@ export const UploadButton: React.FC<UploadButtonProps> = ({
   const handleAfterUploadAction = async (publicUrl: string, directUrl: string) => {
     switch (afterUploadAction) {
       case 'direct':
-        await ClipboardSetText(directUrl);
+        await Clipboard.SetText(directUrl);
         break;
       case 'site':
-        await ClipboardSetText(publicUrl);
+        await Clipboard.SetText(publicUrl);
         break;
       case 'image':
         // Markdown image syntax only makes sense for images.
-        await ClipboardSetText(getFile ? directUrl : `![](${directUrl})`);
+        await Clipboard.SetText(getFile ? directUrl : `![](${directUrl})`);
         break;
       case 'none':
       default:

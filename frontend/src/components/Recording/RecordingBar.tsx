@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StopRecording } from '../../../wailsjs/go/main/App';
+import { StopRecording } from '../../../bindings/github.com/heytonyne/fasp/app';
 import './Recording.css';
 
 interface RecordingBarProps {

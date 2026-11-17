@@ -1,8 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import { AnnotationTool, BlurMode } from '../../types';
-import { CaptureActiveDisplay, OpenImageDialog, ReadImageFile, ShowWindow } from '../../../wailsjs/go/main/App';
-import { WindowHide } from '../../../wailsjs/runtime/runtime';
+import { CaptureActiveDisplay, OpenImageDialog, ReadImageFile, ShowWindow } from '../../../bindings/github.com/heytonyne/fasp/app';
+import { Window } from '@wailsio/runtime';
 import Toast from '../Toast/Toast';
 import BackdropPanel from './BackdropPanel';
 import { fontForSize, markerForSize, strokeForSize } from '../../utils/annotation-sizes';
@@ -241,9 +241,10 @@ const Toolbar: React.FC = () => {
     if (isCapturing) return;
     setIsCapturing(true);
     try {
-      WindowHide();
+      Window.Hide();
       await new Promise((resolve) => setTimeout(resolve, 200));
       const result = await CaptureActiveDisplay();
+      if (!result) throw new Error('the capture returned no image');
       ShowWindow();
       await addImage(result.data, { pendingCrop: true });
     } catch (error) {

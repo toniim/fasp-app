@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CopyFileToClipboard, OpenPath, RevealPath, SaveVideoAs } from '../../../wailsjs/go/main/App';
+import { CopyFileToClipboard, OpenPath, RevealPath, SaveVideoAs } from '../../../bindings/github.com/heytonyne/fasp/app';
 import { UploadButton } from '../EditorWindow/UploadButton';
 import Toast from '../Toast/Toast';
 import { formatDuration } from '../Recording/RecordingBar';

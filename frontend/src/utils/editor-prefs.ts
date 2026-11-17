@@ -5,7 +5,7 @@
 import { BackdropRatio, BackdropSettings, BlurMode, EditorState, HighlightOptions } from '../types';
 import { useEditorStore } from '../store/editorStore';
 import { BACKDROP_PRESETS, BACKDROP_RATIOS, CUSTOM_BACKDROP_ID, DEFAULT_BACKDROP } from './backdrops';
-import { GetSettings, UpdateSetting } from '../../wailsjs/go/main/App';
+import { GetSettings, UpdateSetting } from '../../bindings/github.com/heytonyne/fasp/app';
 
 const SAVE_DELAY_MS = 500;
 const BLUR_MODES: BlurMode[] = ['secure', 'blur', 'pixelate'];

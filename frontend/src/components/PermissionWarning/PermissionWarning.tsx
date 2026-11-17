@@ -4,7 +4,7 @@ import {
   RequestAccessibilityPermission,
   CheckScreenRecordingPermission,
   RequestScreenRecordingPermission
-} from '../../../wailsjs/go/main/App';
+} from '../../../bindings/github.com/heytonyne/fasp/app';
 import './PermissionWarning.css';
 
 interface PermissionWarningProps {

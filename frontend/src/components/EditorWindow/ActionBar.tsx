@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { SaveImage, QuickSaveImage, OpenSaveDialog, GenerateFilename, CopyImageToClipboard, HideWindow } from '../../../wailsjs/go/main/App';
+import { SaveImage, QuickSaveImage, OpenSaveDialog, GenerateFilename, CopyImageToClipboard, HideWindow } from '../../../bindings/github.com/heytonyne/fasp/app';
 import { useEditorStore, selectHasContent } from '../../store/editorStore';
 import { Frame } from '../../types';
 import Toast from '../Toast/Toast';
@@ -132,17 +132,14 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, frame }) => {
         return;
       }
 
-      // Convert base64 to bytes
-      const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-
-      // Save image
+      // Save image (the backend takes bytes as a base64 string)
       await SaveImage(
         {
           path: savePath,
           format: 'png',
           quality: 90,
         },
-        Array.from(bytes)
+        base64Data
       );
 
       setToast({ message: 'Screenshot saved successfully!', type: 'success' });
@@ -169,11 +166,8 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, frame }) => {
       // Remove data URL prefix to get base64
       const base64Data = dataURL.replace(/^data:image\/\w+;base64,/, '');
 
-      // Convert base64 to bytes
-      const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-
-      // Copy to clipboard via backend
-      await CopyImageToClipboard(Array.from(bytes));
+      // Copy to clipboard via backend (bytes travel as a base64 string)
+      await CopyImageToClipboard(base64Data);
 
       setToast({ message: 'Copied to clipboard!', type: 'success' });
 
@@ -226,12 +220,9 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, frame }) => {
       // Remove data URL prefix to get base64
       const base64Data = dataURL.replace(/^data:image\/\w+;base64,/, '');
 
-      // Convert base64 to bytes
-      const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-
       // Go resolves the folder (configured default, else platform default),
       // builds the filename and saves — no platform path guessing here.
-      const savedPath = await QuickSaveImage(Array.from(bytes));
+      const savedPath = await QuickSaveImage(base64Data);
 
       setToast({ message: `Saved to ${savedPath}`, type: 'success' });
 

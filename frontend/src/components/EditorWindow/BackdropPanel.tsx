@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import { BACKDROP_RATIOS, COLOR_BACKDROPS, CUSTOM_BACKDROP_ID, BackdropPreset, paintBackdrop } from '../../utils/backdrops';
 import { PHOTO_BACKDROPS } from '../../utils/backdrop-photos';
-import { OpenImageDialog, ReadImageFile } from '../../../wailsjs/go/main/App';
+import { OpenImageDialog, ReadImageFile } from '../../../bindings/github.com/heytonyne/fasp/app';
 
 // One preset: a photo shows its small preview, a colour preset is drawn with
 // the same painter as the canvas, so the swatch looks like the result.

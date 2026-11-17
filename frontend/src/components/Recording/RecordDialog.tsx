@@ -7,9 +7,10 @@ import {
   ShowWindow,
   StartRecording,
   UpdateSetting,
-} from '../../../wailsjs/go/main/App';
-import { main, recorder } from '../../../wailsjs/go/models';
-import { WindowHide } from '../../../wailsjs/runtime/runtime';
+} from '../../../bindings/github.com/heytonyne/fasp/app';
+import type { RecordingRequest } from '../../../bindings/github.com/heytonyne/fasp/models';
+import type * as recorder from '../../../bindings/github.com/heytonyne/fasp/internal/service/recorder/models';
+import { Window } from '@wailsio/runtime';
 import './Recording.css';
 
 type Mode = 'display' | 'window' | 'region';
@@ -45,10 +46,10 @@ const RecordDialog: React.FC<RecordDialogProps> = ({ onClose }) => {
   useEffect(() => {
     GetSettings()
       .then((s) => {
-        setSystemAudio(s.record_system_audio ?? true);
-        setMicrophone(s.record_microphone ?? false);
-        setMicDevice(s.record_mic_device || '');
-        setFps(s.record_fps || 30);
+        setSystemAudio(s?.record_system_audio ?? true);
+        setMicrophone(s?.record_microphone ?? false);
+        setMicDevice(s?.record_mic_device || '');
+        setFps(s?.record_fps || 30);
       })
       .catch(() => undefined);
     ListMicrophones().then((m) => setMics(m || [])).catch(() => setMics([]));
@@ -88,7 +89,7 @@ const RecordDialog: React.FC<RecordDialogProps> = ({ onClose }) => {
 
       let region = undefined;
       if (mode === 'region') {
-        WindowHide();
+        Window.Hide();
         await sleep(200); // let the window leave the screen before freezing it
         const picked = await SelectRecordingRegion();
         if (!picked) {
@@ -99,17 +100,16 @@ const RecordDialog: React.FC<RecordDialogProps> = ({ onClose }) => {
         region = picked;
       }
 
-      await StartRecording(
-        main.RecordingRequest.createFrom({
-          mode,
-          window: mode === 'window' ? windowHandle : 0,
-          region,
-          system_audio: systemAudio,
-          microphone,
-          mic_device: micDevice,
-          fps,
-        }),
-      );
+      const request: RecordingRequest = {
+        mode,
+        window: mode === 'window' ? windowHandle : 0,
+        region: region ?? null,
+        system_audio: systemAudio,
+        microphone,
+        mic_device: micDevice,
+        fps,
+      };
+      await StartRecording(request);
       onClose();
     } catch (err) {
       ShowWindow();

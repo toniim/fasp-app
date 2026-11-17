@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PauseHotkeys, ResumeHotkeys } from '../../../wailsjs/go/main/App';
+import { PauseHotkeys, ResumeHotkeys } from '../../../bindings/github.com/heytonyne/fasp/app';
 
 interface ShortcutFieldProps {
   value: string;

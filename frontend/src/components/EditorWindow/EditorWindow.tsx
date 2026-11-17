@@ -6,8 +6,8 @@ import Toolbar from './Toolbar';
 import ActionBar from './ActionBar';
 import ZoomBar from './ZoomBar';
 import Toast from '../Toast/Toast';
-import { GetVersion, ReadClipboardImage, ReadImageFile } from '../../../wailsjs/go/main/App';
-import { OnFileDrop, OnFileDropOff } from '../../../wailsjs/runtime/runtime';
+import { GetVersion, ReadClipboardImage, ReadImageFile } from '../../../bindings/github.com/heytonyne/fasp/app';
+import { Events } from '@wailsio/runtime';
 import { IMAGE_GAP, fitScale, viewportSize, clampPosition, keepInView, canPan, alignToDevicePixels } from '../../utils/editor-geometry';
 import { backdropLayout, backdropPreset, paintBackdrop, useBackdropPhoto } from '../../utils/backdrops';
 import { MARKER_OPACITY, fontForSize, markerForSize, strokeForSize } from '../../utils/annotation-sizes';
@@ -572,12 +572,10 @@ const EditorWindow: React.FC = () => {
       if (notes.length) setToast({ message: notes.join('. '), type: failure ? 'error' : 'info' });
     };
 
-    OnFileDrop((x: number, y: number, paths: string[]) => {
-      void handleDrop(x, y, paths);
-    }, false);
-    return () => {
-      OnFileDropOff();
-    };
+    // The backend sends "files:dropped" for files dropped on the editor.
+    return Events.On('files:dropped', ({ data }: { data: { x: number; y: number; paths: string[] } }) => {
+      void handleDrop(data.x, data.y, data.paths);
+    });
   }, [addImage]);
 
   // Handle keyboard shortcuts
@@ -2032,7 +2030,8 @@ const EditorWindow: React.FC = () => {
   );
 
   return (
-    <div className="editor-window">
+    // data-file-drop-target: Wails only reports files dropped on marked elements.
+    <div className="editor-window" data-file-drop-target>
       <Toolbar />
       <div className="editor-canvas">
         <Stage
