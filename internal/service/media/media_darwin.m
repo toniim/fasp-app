@@ -172,6 +172,181 @@ static BOOL runExport(AVURLAsset *asset, NSString *preset, NSURL *outURL, CMTime
     return YES;
 }
 
+// pumpInput feeds one writer input from one reader output on its own queue
+// until the output is drained or the writer fails. The group is left when the
+// input is finished.
+static void pumpInput(AVAssetWriterInput *in, AVAssetReaderOutput *out, dispatch_queue_t q, dispatch_group_t group,
+                      CMTime minPTS) {
+    dispatch_group_enter(group);
+    [in requestMediaDataWhenReadyOnQueue:q
+                              usingBlock:^{
+        while (in.isReadyForMoreMediaData) {
+            CMSampleBufferRef sb = [out copyNextSampleBuffer];
+            if (sb == NULL) { // end of the range, or a reader error
+                [in markAsFinished];
+                dispatch_group_leave(group);
+                return;
+            }
+            // A decode that starts at the keyframe before the cut can hand
+            // out frames ahead of it; they are not part of the result.
+            BOOL early = CMTIME_COMPARE_INLINE(CMSampleBufferGetPresentationTimeStamp(sb), <, minPTS);
+            BOOL ok = early || [in appendSampleBuffer:sb];
+            CFRelease(sb);
+            if (!ok) { // the writer failed; its error is read after the group
+                [in markAsFinished];
+                dispatch_group_leave(group);
+                return;
+            }
+        }
+    }];
+}
+
+// reencodeRange cuts [startNs, endNs) with AVAssetReader + AVAssetWriter. The
+// export presets cap the size (HighestQuality stops at 3840x2160); the writer
+// keeps the source pixel size, frame rate and audio layout, with the bitrate
+// rule of the recorder.
+static BOOL reencodeRange(AVURLAsset *asset, NSURL *outURL, int64_t startNs, int64_t endNs, NSString **why) {
+    AVAssetTrack *video = [asset tracksWithMediaType:AVMediaTypeVideo].firstObject;
+    if (video == nil) {
+        *why = @"no video track";
+        return NO;
+    }
+    AVAssetTrack *audio = [asset tracksWithMediaType:AVMediaTypeAudio].firstObject;
+    CMTime start = CMTimeMake(startNs, 1000000000), end = CMTimeMake(endNs, 1000000000);
+
+    NSError *err = nil;
+    AVAssetReader *reader = [AVAssetReader assetReaderWithAsset:asset error:&err];
+    if (reader == nil) {
+        *why = [NSString stringWithFormat:@"open reader: %@", err.localizedDescription ?: @"failed"];
+        return NO;
+    }
+    reader.timeRange = CMTimeRangeFromTimeToTime(start, end);
+
+    [[NSFileManager defaultManager] removeItemAtURL:outURL error:nil];
+    AVAssetWriter *writer = [AVAssetWriter assetWriterWithURL:outURL fileType:AVFileTypeMPEG4 error:&err];
+    if (writer == nil) {
+        *why = [NSString stringWithFormat:@"open writer: %@", err.localizedDescription ?: @"failed"];
+        return NO;
+    }
+
+    // Video: decode to 4:2:0 (what the encoder takes without a conversion).
+    CGSize size = video.naturalSize;
+    int width = ((int)lround(size.width) + 1) & ~1, height = ((int)lround(size.height) + 1) & ~1;
+    int fps = (int)lround(video.nominalFrameRate);
+    if (fps < 1 || fps > 120) fps = 30;
+    long long b = (long long)width * height * fps / 10;
+    int bitrate = (int)MAX(2000000LL, MIN(40000000LL, b));
+
+    AVAssetReaderTrackOutput *vOut = [AVAssetReaderTrackOutput
+        assetReaderTrackOutputWithTrack:video
+                         outputSettings:@{
+                             (id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+                         }];
+    vOut.alwaysCopiesSampleData = NO;
+    AVAssetWriterInput *vIn = [AVAssetWriterInput
+        assetWriterInputWithMediaType:AVMediaTypeVideo
+                       outputSettings:@{
+                           AVVideoCodecKey : AVVideoCodecTypeH264,
+                           AVVideoWidthKey : @(width),
+                           AVVideoHeightKey : @(height),
+                           AVVideoCompressionPropertiesKey : @{
+                               AVVideoAverageBitRateKey : @(bitrate),
+                               AVVideoExpectedSourceFrameRateKey : @(fps),
+                               AVVideoMaxKeyFrameIntervalKey : @(fps * 2),
+                               AVVideoProfileLevelKey : AVVideoProfileLevelH264HighAutoLevel,
+                           },
+                       }];
+    vIn.expectsMediaDataInRealTime = NO;
+    vIn.transform = video.preferredTransform;
+    if (![reader canAddOutput:vOut] || ![writer canAddInput:vIn]) {
+        *why = @"the video track cannot be re-encoded";
+        return NO;
+    }
+    [reader addOutput:vOut];
+    [writer addInput:vIn];
+
+    // Audio: decode to 16-bit LPCM at the source rate and channel count, then AAC.
+    AVAssetReaderTrackOutput *aOut = nil;
+    AVAssetWriterInput *aIn = nil;
+    if (audio != nil) {
+        double rate = 48000;
+        int channels = 2;
+        CMFormatDescriptionRef fd = (__bridge CMFormatDescriptionRef)audio.formatDescriptions.firstObject;
+        const AudioStreamBasicDescription *asbd = fd != NULL ? CMAudioFormatDescriptionGetStreamBasicDescription(fd) : NULL;
+        if (asbd != NULL && asbd->mSampleRate > 0 && asbd->mChannelsPerFrame > 0) {
+            rate = asbd->mSampleRate;
+            channels = (int)MIN(asbd->mChannelsPerFrame, 2u);
+        }
+        aOut = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:audio
+                                                          outputSettings:@{
+                                                              AVFormatIDKey : @(kAudioFormatLinearPCM),
+                                                              AVLinearPCMBitDepthKey : @16,
+                                                              AVLinearPCMIsFloatKey : @NO,
+                                                              AVLinearPCMIsBigEndianKey : @NO,
+                                                              AVLinearPCMIsNonInterleaved : @NO,
+                                                              AVSampleRateKey : @(rate),
+                                                              AVNumberOfChannelsKey : @(channels),
+                                                          }];
+        aOut.alwaysCopiesSampleData = NO;
+        aIn = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio
+                                                 outputSettings:@{
+                                                     AVFormatIDKey : @(kAudioFormatMPEG4AAC),
+                                                     AVSampleRateKey : @(rate),
+                                                     AVNumberOfChannelsKey : @(channels),
+                                                     AVEncoderBitRateKey : @(80000 * channels),
+                                                 }];
+        aIn.expectsMediaDataInRealTime = NO;
+        if (![reader canAddOutput:aOut] || ![writer canAddInput:aIn]) {
+            *why = @"the audio track cannot be re-encoded";
+            return NO;
+        }
+        [reader addOutput:aOut];
+        [writer addInput:aIn];
+    }
+
+    if (![reader startReading]) {
+        *why = [NSString stringWithFormat:@"start reading: %@", reader.error.localizedDescription ?: @"failed"];
+        return NO;
+    }
+    if (![writer startWriting]) {
+        [reader cancelReading];
+        *why = [NSString stringWithFormat:@"start writing: %@", writer.error.localizedDescription ?: @"failed"];
+        return NO;
+    }
+    // Source times from the cut start map to 0 in the output, so audio and
+    // video keep their offset to each other.
+    [writer startSessionAtSourceTime:start];
+
+    dispatch_group_t group = dispatch_group_create();
+    pumpInput(vIn, vOut, dispatch_queue_create("fasp.media.trim.video", DISPATCH_QUEUE_SERIAL), group, start);
+    if (aIn != nil) {
+        pumpInput(aIn, aOut, dispatch_queue_create("fasp.media.trim.audio", DISPATCH_QUEUE_SERIAL), group, start);
+    }
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+
+    BOOL readOK = reader.status == AVAssetReaderStatusCompleted;
+    NSString *readErr = reader.error.localizedDescription;
+    if (!readOK) {
+        [reader cancelReading];
+        [writer cancelWriting];
+        [[NSFileManager defaultManager] removeItemAtURL:outURL error:nil];
+        *why = [NSString stringWithFormat:@"read: %@", readErr ?: @"failed"];
+        return NO;
+    }
+    [writer endSessionAtSourceTime:end];
+    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+    [writer finishWritingWithCompletionHandler:^{
+        dispatch_semaphore_signal(sem);
+    }];
+    dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+    if (writer.status != AVAssetWriterStatusCompleted) {
+        [[NSFileManager defaultManager] removeItemAtURL:outURL error:nil];
+        *why = [NSString stringWithFormat:@"write: %@", writer.error.localizedDescription ?: @"failed"];
+        return NO;
+    }
+    return YES;
+}
+
 int fasp_media_trim(const char *in, const char *out, int64_t startNs, int64_t endNs, char **errOut) {
     @autoreleasepool {
         AVURLAsset *asset = openAsset(in);
@@ -185,8 +360,8 @@ int fasp_media_trim(const char *in, const char *out, int64_t startNs, int64_t en
             runExport(asset, AVAssetExportPresetPassthrough, outURL, range, &why)) {
             return 0;
         }
-        if (runExport(asset, AVAssetExportPresetHighestQuality, outURL, range, &why)) return 0;
-        *errOut = copyMsg(why ?: @"export failed");
+        if (reencodeRange(asset, outURL, startNs, endNs, &why)) return 0;
+        *errOut = copyMsg(why ?: @"trim failed");
         return -1;
     }
 }
