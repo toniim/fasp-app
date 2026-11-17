@@ -10,6 +10,10 @@ export interface CompleteResponse {
   direct_url: string;
 }
 
+// Who can open the uploaded file. '' uses the "Upload as public" setting. The
+// server has only these two states: no password, expiry or view limit.
+export type Visibility = '' | 'public' | 'private';
+
 export interface UploadProgress {
   loaded: number;
   total: number;
@@ -20,9 +24,9 @@ class UploadService {
   /**
    * Initialize upload and get presigned upload URL
    */
-  async init(filename: string, size: number, contentType: string): Promise<InitResponse> {
+  async init(filename: string, size: number, contentType: string, visibility: Visibility = ''): Promise<InitResponse> {
     try {
-      const response = await UploadInit(filename, size, contentType);
+      const response = await UploadInit(filename, size, contentType, visibility);
       if (!response) throw new Error('the server sent no upload details');
       return response;
     } catch (error) {
@@ -130,13 +134,14 @@ class UploadService {
     data: Blob,
     filename: string,
     contentType: string,
-    onProgress?: (progress: UploadProgress) => void
+    onProgress?: (progress: UploadProgress) => void,
+    visibility: Visibility = ''
   ): Promise<CompleteResponse> {
     // Step 1: Initialize upload
-    console.log('[upload] init', { filename, size: data.size, contentType });
+    console.log('[upload] init', { filename, size: data.size, contentType, visibility });
     let initResp: InitResponse;
     try {
-      initResp = await this.init(filename, data.size, contentType);
+      initResp = await this.init(filename, data.size, contentType, visibility);
     } catch (error) {
       console.error('[upload] init step failed:', error);
       throw new Error(`Init failed: ${error instanceof Error ? error.message : String(error)}`);

@@ -195,8 +195,13 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, frame }) => {
     }
   };
 
-  const handleUploadComplete = (publicUrl: string, directUrl: string) => {
-    setToast({ message: 'Upload successful! URL copied to clipboard.', type: 'success' });
+  const handleUploadComplete = (publicUrl: string, directUrl: string, isPublic: boolean) => {
+    setToast({
+      message: isPublic
+        ? 'Uploaded as public. The link is on the clipboard.'
+        : 'Uploaded as private. The link is on the clipboard, but only you can open it.',
+      type: 'success',
+    });
 
     // Close window after successful upload
     setTimeout(() => {

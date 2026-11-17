@@ -1,11 +1,23 @@
 package upload
 
+// Visibility choices for one upload. The server knows only public and private
+// files: there is no password, expiry or view count.
+const (
+	// VisibilityDefault uses the "Upload as public" setting.
+	VisibilityDefault = ""
+	// VisibilityPublic makes the file open to anyone with the link.
+	VisibilityPublic = "public"
+	// VisibilityPrivate makes the file open only to its owner.
+	VisibilityPrivate = "private"
+)
+
 // InitRequest represents the request to initiate an upload
 type InitRequest struct {
 	Filename string `json:"filename"`
 	Size     int64  `json:"size"`
 	MimeType string `json:"mime_type"`
-	// IsPublic marks the file public so the server returns shareable URLs.
+	// IsPublic marks the file public (shareable URLs) or private (owner only).
+	// It is always sent, including false.
 	IsPublic bool `json:"is_public"`
 }
 

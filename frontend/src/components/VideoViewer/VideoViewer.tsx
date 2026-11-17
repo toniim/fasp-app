@@ -196,7 +196,12 @@ const VideoViewer: React.FC<VideoViewerProps> = ({ video, onClose }) => {
         <UploadButton
           getFile={getFile}
           hasImage
-          onComplete={() => setToast({ message: 'Uploaded. The link is on the clipboard.', type: 'success' })}
+          onComplete={(_publicUrl, _directUrl, isPublic) => setToast({
+            message: isPublic
+              ? 'Uploaded as public. The link is on the clipboard.'
+              : 'Uploaded as private. The link is on the clipboard, but only you can open it.',
+            type: 'success',
+          })}
           onError={(err) => setToast({ message: `Upload failed: ${err}`, type: 'error' })}
         />
       </div>

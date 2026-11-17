@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { uploadService, UploadProgress, CompleteResponse } from '../services/upload-service';
+import { uploadService, UploadProgress, CompleteResponse, Visibility } from '../services/upload-service';
 
 export interface UploadState {
   isUploading: boolean;
@@ -19,7 +19,8 @@ export const useUpload = () => {
   const upload = useCallback(async (
     data: Blob,
     filename: string,
-    contentType: string = 'image/png'
+    contentType: string = 'image/png',
+    visibility: Visibility = ''
   ): Promise<CompleteResponse | null> => {
     setState({
       isUploading: true,
@@ -38,7 +39,8 @@ export const useUpload = () => {
             ...prev,
             progress: progress.percentage,
           }));
-        }
+        },
+        visibility
       );
 
       setState({

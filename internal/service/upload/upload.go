@@ -31,26 +31,48 @@ func New(settingsSvc settings.Service) Service {
 
 // credentials returns the configured server base URL and API key.
 func (s *uploadService) credentials() (string, string, error) {
+	serverURL, apiKey, _, err := s.config()
+	return serverURL, apiKey, err
+}
+
+// config returns the server URL, API key and the default visibility
+// (public when true) from the settings.
+func (s *uploadService) config() (serverURL, apiKey string, defaultPublic bool, err error) {
 	cfg, err := s.settings.GetAll()
 	if err != nil {
-		return "", "", fmt.Errorf("failed to read settings: %w", err)
+		return "", "", false, fmt.Errorf("failed to read settings: %w", err)
 	}
 
-	serverURL := strings.TrimRight(strings.TrimSpace(cfg.ServerURL), "/")
-	apiKey := strings.TrimSpace(cfg.APIKey)
+	serverURL = strings.TrimRight(strings.TrimSpace(cfg.ServerURL), "/")
+	apiKey = strings.TrimSpace(cfg.APIKey)
 
 	if serverURL == "" {
-		return "", "", fmt.Errorf("server URL not configured")
+		return "", "", false, fmt.Errorf("server URL not configured")
 	}
 	if apiKey == "" {
-		return "", "", fmt.Errorf("API key not configured")
+		return "", "", false, fmt.Errorf("API key not configured")
 	}
-	return serverURL, apiKey, nil
+	return serverURL, apiKey, cfg.UploadPublic, nil
+}
+
+// resolvePublic turns a visibility choice into the is_public flag: an explicit
+// choice wins, an empty one takes the default from the settings.
+func resolvePublic(visibility string, defaultPublic bool) (bool, error) {
+	switch visibility {
+	case VisibilityDefault:
+		return defaultPublic, nil
+	case VisibilityPublic:
+		return true, nil
+	case VisibilityPrivate:
+		return false, nil
+	default:
+		return false, fmt.Errorf("unknown visibility %q: use %q or %q", visibility, VisibilityPublic, VisibilityPrivate)
+	}
 }
 
 // Upload uploads image data using the full 3-step flow.
 func (s *uploadService) Upload(data []byte, filename string) (*model.UploadResult, error) {
-	initResp, err := s.Init(filename, int64(len(data)), "image/png")
+	initResp, err := s.Init(filename, int64(len(data)), "image/png", VisibilityDefault)
 	if err != nil {
 		return nil, err
 	}
@@ -87,9 +109,15 @@ func (s *uploadService) Upload(data []byte, filename string) (*model.UploadResul
 	}, nil
 }
 
-// Init initiates a file upload and returns a presigned upload URL.
-func (s *uploadService) Init(filename string, size int64, contentType string) (*InitResponse, error) {
-	serverURL, apiKey, err := s.credentials()
+// Init initiates a file upload and returns a presigned upload URL. visibility
+// is VisibilityPublic, VisibilityPrivate, or empty for the default in the
+// settings; is_public is always sent, so the server never has to guess.
+func (s *uploadService) Init(filename string, size int64, contentType, visibility string) (*InitResponse, error) {
+	serverURL, apiKey, defaultPublic, err := s.config()
+	if err != nil {
+		return nil, err
+	}
+	isPublic, err := resolvePublic(visibility, defaultPublic)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +126,7 @@ func (s *uploadService) Init(filename string, size int64, contentType string) (*
 		Filename: filename,
 		Size:     size,
 		MimeType: contentType,
-		IsPublic: true,
+		IsPublic: isPublic,
 	}
 
 	jsonData, err := json.Marshal(initReq)
