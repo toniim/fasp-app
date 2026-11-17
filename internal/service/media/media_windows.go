@@ -281,6 +281,28 @@ func trim(in, out string, start, end time.Duration, hardware bool) error {
 		rateNum, rateDen = 30, 1
 	}
 
+	// Media Foundation's H.264 encoder refuses frames above its limit
+	// (MF_E_INVALIDMEDIATYPE at SetInputMediaType), e.g. a 4800x2700 Retina
+	// recording: read such a source through a reader that scales it to fit.
+	if fw, fh := fitEncoder(w, h); fw != w || fh != h {
+		r.close()
+		if r, err = openReaderScaling(in); err != nil {
+			return err
+		}
+		defer r.close()
+		r.selectOnly(v, a)
+		st, err := videoType(&mfVideoFormatNV12, fw, fh, rateNum, rateDen)
+		if err != nil {
+			return err
+		}
+		err = r.setType(v, st)
+		release(st)
+		if err != nil {
+			return fmt.Errorf("scale %dx%d to %dx%d for the encoder: %w", w, h, fw, fh, err)
+		}
+		w, h = fw, fh
+	}
+
 	var audioRate, audioCh uint32
 	if a >= 0 {
 		if audioRate, audioCh, err = decodeAudioToPCM(r, a); err != nil {
@@ -322,6 +344,19 @@ func trim(in, out string, start, end time.Duration, hardware bool) error {
 	}
 	finished = true
 	return hresultErr("SinkWriter.Finalize", comCall(wr, sinkFinalize))
+}
+
+// The largest frame Media Foundation's H.264 encoder accepts (level 5.1/5.2).
+const maxEncodeW, maxEncodeH = 4096, 2304
+
+// fitEncoder returns w x h scaled down, aspect kept and even, to fit the
+// encoder's limit; a size that fits is returned as is.
+func fitEncoder(w, h int) (int, int) {
+	if w <= maxEncodeW && h <= maxEncodeH {
+		return w, h
+	}
+	k := min(float64(maxEncodeW)/float64(w), float64(maxEncodeH)/float64(h))
+	return int(float64(w)*k) &^ 1, int(float64(h)*k) &^ 1
 }
 
 // decodeAudioToPCM asks the reader for 16-bit PCM in the stream's own rate and

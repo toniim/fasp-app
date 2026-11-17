@@ -63,6 +63,9 @@ var (
 
 	mfReadwriteEnableHWMFT        = mustGUID("A634A91C-822B-41B9-A494-4DE4643612B0")
 	mfSourceReaderEnableVideoProc = mustGUID("FB394F3D-CCF1-42EE-BBB3-F9B845D5681D")
+	// MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING: like the basic one, and
+	// it can also resize the decoded frames.
+	mfSourceReaderEnableAdvancedVideoProc = mustGUID("0F81DA2C-B537-4672-A8B2-A681B17307A3")
 	mfPDDuration                  = mustGUID("6C990D33-BB8E-477A-8598-0D5D96FCD88A")
 	iidIMF2DBuffer                = mustGUID("7DC9D5F9-9ED9-44EC-9BBF-0600BB589FBB")
 )
@@ -241,6 +244,16 @@ type sourceReader struct{ p unsafe.Pointer }
 // openReader opens path. With videoProc the reader can convert decoded YUV to
 // RGB32 itself.
 func openReader(path string, videoProc bool) (*sourceReader, error) {
+	return openReaderWith(path, videoProc, false)
+}
+
+// openReaderScaling opens a reader whose video output can have another frame
+// size than the source (advanced video processing).
+func openReaderScaling(path string) (*sourceReader, error) {
+	return openReaderWith(path, false, true)
+}
+
+func openReaderWith(path string, videoProc, advanced bool) (*sourceReader, error) {
 	pathW, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, err
@@ -252,6 +265,9 @@ func openReader(path string, videoProc bool) (*sourceReader, error) {
 	defer release(attrs)
 	if videoProc {
 		setUINT32(attrs, &mfSourceReaderEnableVideoProc, 1)
+	}
+	if advanced {
+		setUINT32(attrs, &mfSourceReaderEnableAdvancedVideoProc, 1)
 	}
 	var r unsafe.Pointer
 	if hr, _, _ := procMFCreateSourceReaderFromURL.Call(uintptr(unsafe.Pointer(pathW)), uintptr(attrs), uintptr(unsafe.Pointer(&r))); failed(hr) {
