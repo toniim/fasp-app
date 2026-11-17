@@ -78,8 +78,9 @@ func TestGIFExportJobReportsProgressAndWritesGIF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
 	g, err := gif.DecodeAll(f)
+	// Closed before the release below: Windows cannot delete an open file.
+	f.Close()
 	if err != nil {
 		t.Fatalf("the result is not a valid GIF: %v", err)
 	}

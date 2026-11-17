@@ -63,7 +63,9 @@ func TestRecognizeReturnsLinesInOrder(t *testing.T) {
 		t.Fatalf("Recognize: %v", err)
 	}
 	got := normalize(res.Text)
-	i, j := strings.Index(got, "hello fasp 2026"), strings.Index(got, "second line of text")
+	// "Hello" is left out of the match: Windows OCR reads the blocky test
+	// font's "o" as "a" ("Hella"); the order of the lines is what matters.
+	i, j := strings.Index(got, "fasp 2026"), strings.Index(got, "second line of text")
 	if i < 0 || j < 0 || i > j {
 		t.Fatalf("lines missing or out of order, text = %q", res.Text)
 	}
