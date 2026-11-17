@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { SaveImage, QuickSaveImage, OpenSaveDialog, GenerateFilename, CopyImageToClipboard, HideWindow } from '../../../bindings/github.com/heytonyne/fasp/app';
+import { SaveImage, QuickSaveImage, OpenSaveDialog, GenerateFilename, CopyImageToClipboard, HideWindow, PinImage, CopyText } from '../../../bindings/github.com/heytonyne/fasp/app';
 import { useEditorStore, selectHasContent } from '../../store/editorStore';
 import { Frame } from '../../types';
 import Toast from '../Toast/Toast';
@@ -24,6 +24,19 @@ const Icons = {
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <rect x="5" y="5" width="9" height="9" rx="1" />
       <path d="M11 5V3C11 2.44772 10.5523 2 10 2H3C2.44772 2 2 2.44772 2 3V10C2 10.5523 2.44772 11 3 11H5" />
+    </svg>
+  ),
+  pin: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.5 2L14 6.5L11.5 7.5L9 10L9.5 12.5L3.5 6.5L6 7L8.5 4.5L9.5 2Z" />
+      <path d="M6.5 9.5L2.5 13.5" />
+    </svg>
+  ),
+  text: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 4V3H13V4" />
+      <path d="M8 3V13" />
+      <path d="M6 13H10" />
     </svg>
   ),
   crop: (
@@ -178,6 +191,41 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, frame }) => {
     } catch (error) {
       console.error('Failed to copy to clipboard:', error);
       setToast({ message: `Copy failed: ${errorText(error)}`, type: 'error' });
+    }
+  };
+
+  // Pin: the same pixels as Copy, floating on the screen in their own window.
+  // The editor stays as it is; the pin lives on its own.
+  const handlePin = async () => {
+    if (!stageRef.current || !hasImage) return;
+    try {
+      const base64Data = exportDataURL().replace(/^data:image\/\w+;base64,/, '');
+      await PinImage(base64Data);
+      setToast({ message: 'Pinned to the screen', type: 'success' });
+    } catch (error) {
+      console.error('Failed to pin:', error);
+      setToast({ message: `Pin failed: ${errorText(error)}`, type: 'error' });
+    }
+  };
+
+  // Copy Text: recognise the text of the whole exported shot and copy it.
+  const [isReadingText, setIsReadingText] = useState(false);
+  const handleCopyText = async () => {
+    if (!stageRef.current || !hasImage || isReadingText) return;
+    try {
+      setIsReadingText(true);
+      const base64Data = exportDataURL().replace(/^data:image\/\w+;base64,/, '');
+      const result = await CopyText(base64Data);
+      if (!result || result.lines === 0) {
+        setToast({ message: 'No text found', type: 'info' });
+      } else {
+        setToast({ message: `Copied ${result.lines} ${result.lines === 1 ? 'line' : 'lines'} of text`, type: 'success' });
+      }
+    } catch (error) {
+      console.error('Failed to copy text:', error);
+      setToast({ message: errorText(error), type: 'error' });
+    } finally {
+      setIsReadingText(false);
     }
   };
 
@@ -347,6 +395,14 @@ const ActionBar: React.FC<ActionBarProps> = ({ stageRef, frame }) => {
             <button className="secondary-button" onClick={handleCopy} title={`Copy (${modKey}+C)`}>
               {Icons.copy}
               <span>Copy</span>
+            </button>
+            <button className="secondary-button" onClick={handlePin} title="Pin this shot on top of the screen">
+              {Icons.pin}
+              <span>Pin</span>
+            </button>
+            <button className="secondary-button" onClick={handleCopyText} disabled={isReadingText} title="Recognise the text in this shot and copy it">
+              {Icons.text}
+              <span>{isReadingText ? 'Reading...' : 'Copy Text'}</span>
             </button>
             <UploadButton
               getImageData={exportDataURL}
