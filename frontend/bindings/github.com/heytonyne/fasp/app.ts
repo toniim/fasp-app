@@ -99,6 +99,14 @@ export function ClosePin(id: string): $CancellablePromise<void> {
 }
 
 /**
+ * CloseRecordWindow closes the options window: Cancel, Esc, or the recording
+ * has started.
+ */
+export function CloseRecordWindow(): $CancellablePromise<void> {
+    return $Call.ByID(2243167702);
+}
+
+/**
  * CopyFileToClipboard puts a file on the clipboard, ready to paste into a chat
  * app, an email or a folder.
  */
@@ -237,6 +245,14 @@ export function OpenImageDialog(): $CancellablePromise<string> {
  */
 export function OpenPath(path: string): $CancellablePromise<void> {
     return $Call.ByID(1591734570, path);
+}
+
+/**
+ * OpenRecordWindow shows the recording options window, creating it when
+ * needed, in front and focused.
+ */
+export function OpenRecordWindow(): $CancellablePromise<void> {
+    return $Call.ByID(1419128140);
 }
 
 /**

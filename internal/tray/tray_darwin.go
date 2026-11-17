@@ -96,6 +96,19 @@ func (m *darwinManager) SetCountdown(remaining int) {
 	C.tray_set_countdown(C.int(remaining))
 }
 
+// SetRecording switches the record item between "Start Recording…" and
+// "Stop Recording".
+func (m *darwinManager) SetRecording(recording bool) {
+	if !m.initialized {
+		return
+	}
+	on := C.int(0)
+	if recording {
+		on = 1
+	}
+	C.tray_set_recording(on)
+}
+
 func (m *darwinManager) Quit() {
 	if !m.initialized {
 		return

@@ -122,7 +122,7 @@ Pins are ordinary windows, so they show up in Fasp's own screenshots and recordi
 
 ### Record the screen
 
-Press the **Start / stop recording** hotkey (or **File → Record Screen…**, or the tray menu) and choose:
+Press the **Start / stop recording** hotkey (or **File → Start Recording…**, or **Start Recording…** in the tray menu). The recording options open in their own small window, in front, and the editor stays as it was. Choose:
 
 | Mode | Records |
 |---|---|
@@ -248,7 +248,7 @@ On macOS, use `Cmd` in place of `Ctrl` for the editor shortcuts.
 
 ### Tray menu
 
-Capture Screenshot, Capture Zone, **Repeat Last Zone**, **Capture Text**, **Delayed Capture** (see below), Record Screen / Stop Recording, Open Image…, **Recents** (your latest saved screenshots and recordings, and their folder), Show/Hide Window, Settings… and Quit.
+Capture Screenshot, Capture Zone, **Repeat Last Zone**, **Capture Text**, **Delayed Capture** (see below), **Start Recording…** (it reads **Stop Recording** while a recording runs), Open Image…, **Recents** (your latest saved screenshots and recordings, and their folder), Show/Hide Window, Settings… and Quit.
 On Windows, closing the editor window only hides it and Fasp keeps running in the tray; use **Quit** to exit.
 
 ### Settings

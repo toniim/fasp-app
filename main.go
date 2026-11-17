@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -65,6 +66,11 @@ type App struct {
 	// recordingBar is set while the window is the small recording control
 	// bar, so its size is not saved as the editor size.
 	recordingBar atomic.Bool
+	// The recording options window while it is open, and the File menu's
+	// record item (its label follows the recording state).
+	recordWinMu    sync.Mutex
+	recordWin      *application.WebviewWindow
+	recordMenuItem *application.MenuItem
 
 	// Pinned images, trim and GIF jobs, and text capture (pin, OCR, player tools).
 	pins          *pinStore
@@ -278,7 +284,8 @@ func (a *App) buildMenu() *application.Menu {
 	fileMenu.Add("Capture Text").OnClick(func(_ *application.Context) {
 		go a.CaptureText()
 	})
-	fileMenu.Add("Record Screen...").OnClick(func(_ *application.Context) {
+	// Named after what a click does now; setRecordingUI renames it.
+	a.recordMenuItem = fileMenu.Add(recordMenuLabel(a.IsRecording())).OnClick(func(_ *application.Context) {
 		a.toggleRecording()
 	})
 	fileMenu.Add("Open Image...").SetAccelerator("CmdOrCtrl+O").OnClick(func(_ *application.Context) {
@@ -655,6 +662,9 @@ func (a *App) ShowWindow() {
 	a.window.Show()
 	a.window.UnMinimise()
 	a.applyWindowState()
+	// Focus brings the app to the front too (v3 Show alone leaves it behind
+	// the active app on macOS).
+	a.window.Focus()
 	focusWebView(a.window)
 	// Re-apply shortly after: on Windows, maximising right after Show can be
 	// ignored because the window hasn't finished becoming visible yet.

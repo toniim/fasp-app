@@ -60,6 +60,9 @@ type Manager interface {
 	// Countdown" in the menu. 0 clears both. It is not part of any picture the
 	// capture takes: the caller clears it before capturing.
 	SetCountdown(remaining int)
+	// SetRecording names the record item after what a click does now:
+	// "Start Recording…" when idle, "Stop Recording" while recording.
+	SetRecording(recording bool)
 	// Quit cleans up tray resources
 	Quit()
 }

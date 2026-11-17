@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  CloseRecordWindow,
   GetSettings,
   ListMicrophones,
   ListWindows,
   SelectRecordingRegion,
-  ShowWindow,
   StartRecording,
   UpdateSetting,
 } from '../../../bindings/github.com/heytonyne/fasp/app';
@@ -15,9 +15,14 @@ import './Recording.css';
 
 type Mode = 'display' | 'window' | 'region';
 
-interface RecordDialogProps {
-  onClose: () => void;
-}
+// Width of the options window, CSS px; its height follows the content.
+const WINDOW_WIDTH = 480;
+
+// Brings this window back after it was hidden for a region pick or a failed start.
+const showAgain = () => {
+  Window.Show();
+  Window.Focus();
+};
 
 const MODES: { id: Mode; label: string; hint: string }[] = [
   { id: 'display', label: 'Full screen', hint: 'The screen under the mouse pointer' },
@@ -29,9 +34,14 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Pick what to record and which audio to include. Audio choices start from the
- * Settings defaults and are remembered for next time.
+ * Settings defaults and are remembered for next time. It runs in its own small
+ * window (Go's OpenRecordWindow), not over the editor.
  */
-const RecordDialog: React.FC<RecordDialogProps> = ({ onClose }) => {
+const RecordDialog: React.FC = () => {
+  const onClose = () => {
+    CloseRecordWindow();
+  };
+  const rootRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<Mode>('display');
   const [windows, setWindows] = useState<recorder.Window[]>([]);
   const [windowHandle, setWindowHandle] = useState<number>(0);
@@ -62,7 +72,38 @@ const RecordDialog: React.FC<RecordDialogProps> = ({ onClose }) => {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [busy, onClose]);
+  }, [busy]);
+
+  // A window opened from the tray or a hotkey must come to the front with the
+  // keyboard focus; ask once the page is up (Go cannot while it is created).
+  useEffect(() => {
+    Window.Focus();
+  }, []);
+
+  // Fit the window to the content: it grows with the window list and the
+  // microphone row. The difference between the window's size and the page's
+  // viewport is the title bar.
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    let last = 0;
+    const fit = async () => {
+      const content = Math.ceil(el.getBoundingClientRect().height);
+      if (!content || content === last) return;
+      last = content;
+      try {
+        const size = await Window.Size();
+        const chrome = Math.max(0, size.height - window.innerHeight);
+        await Window.SetSize(WINDOW_WIDTH, content + chrome);
+      } catch {
+        // Outside the app (browser preview) there is no window to size.
+      }
+    };
+    const observer = new ResizeObserver(() => void fit());
+    observer.observe(el);
+    void fit();
+    return () => observer.disconnect();
+  }, []);
 
   const refreshWindows = () => {
     ListWindows()
@@ -87,13 +128,16 @@ const RecordDialog: React.FC<RecordDialogProps> = ({ onClose }) => {
       await UpdateSetting('record_mic_device', micDevice);
       await UpdateSetting('record_fps', fps);
 
+      // This window leaves the screen first: it must not be in the frozen
+      // screen of a region pick, nor in the first frames of the recording.
+      Window.Hide();
+      await sleep(200);
+
       let region = undefined;
       if (mode === 'region') {
-        Window.Hide();
-        await sleep(200); // let the window leave the screen before freezing it
         const picked = await SelectRecordingRegion();
         if (!picked) {
-          ShowWindow();
+          showAgain();
           setBusy(false);
           return;
         }
@@ -109,23 +153,19 @@ const RecordDialog: React.FC<RecordDialogProps> = ({ onClose }) => {
         mic_device: micDevice,
         fps,
       };
+      // Go closes this window once the recording has started.
       await StartRecording(request);
-      onClose();
     } catch (err) {
-      ShowWindow();
+      showAgain();
       setError(String(err));
       setBusy(false);
     }
   };
 
+  // The native title bar carries the title and the close button.
   return (
-    <>
-      <div className="settings-backdrop" onClick={() => !busy && onClose()} />
+    <div className="record-standalone" ref={rootRef}>
       <div className="settings-window record-dialog">
-        <div className="settings-header">
-          <h2>Record Screen</h2>
-          <button className="close-btn" onClick={onClose} disabled={busy}>×</button>
-        </div>
 
         <div className="settings-content">
           <div className="record-modes">
@@ -229,7 +269,7 @@ const RecordDialog: React.FC<RecordDialogProps> = ({ onClose }) => {
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 

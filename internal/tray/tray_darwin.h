@@ -9,6 +9,9 @@ void tray_set_recents(char **paths, int count);
 // tray_set_countdown shows the seconds left next to the menu bar icon and
 // reveals the "Cancel Countdown" item; 0 hides both.
 void tray_set_countdown(int remaining);
+// tray_set_recording names the record item "Stop Recording" (1) or
+// "Start Recording…" (0).
+void tray_set_recording(int recording);
 void tray_cleanup(void);
 
 #endif

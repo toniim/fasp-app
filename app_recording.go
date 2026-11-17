@@ -111,6 +111,8 @@ func (a *App) StartRecording(req RecordingRequest) error {
 		return err
 	}
 	st.rec, st.path, st.finishing = rec, path, sync.Once{}
+	a.CloseRecordWindow()
+	a.setRecordingUI(true)
 	a.enterRecordingBar()
 	a.emit("recording:started", RecordingStatus{Mode: req.Mode, StartedAt: time.Now().UnixMilli()})
 
@@ -160,6 +162,7 @@ func (a *App) finishRecording(rec recorder.Recording) {
 			a.recordRecent(path)
 		}
 		setExcludedFromCapture(a.window, false)
+		a.setRecordingUI(false)
 		a.exitRecordingBar()
 		a.emit("recording:finished", res)
 	})
@@ -252,6 +255,5 @@ func (a *App) toggleRecording() {
 		a.StopRecording()
 		return
 	}
-	a.emit("open:record")
-	a.ShowWindow()
+	a.OpenRecordWindow()
 }

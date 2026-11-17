@@ -27,6 +27,8 @@ type windowsManager struct {
 
 	mu          sync.Mutex
 	cancelItem  *systray.MenuItem
+	recordItem  *systray.MenuItem
+	recording   bool
 	recents     []string
 	recentItems []*systray.MenuItem
 	recentShown []bool
@@ -104,7 +106,10 @@ func (m *windowsManager) onReady() {
 	m.cancelItem = mCancel
 	m.mu.Unlock()
 
-	mRecord := systray.AddMenuItem("Record Screen / Stop Recording", "Start a screen recording, or stop the running one")
+	m.mu.Lock()
+	mRecord := systray.AddMenuItem(recordTitle(m.recording), "Start a screen recording, or stop the running one")
+	m.recordItem = mRecord
+	m.mu.Unlock()
 	mOpenImage := systray.AddMenuItem("Open Image...", "Open an image for annotation")
 	systray.AddSeparator()
 
@@ -202,6 +207,26 @@ func (m *windowsManager) onReady() {
 			}
 		}
 	}()
+}
+
+// recordTitle says what a click on the record item does now.
+func recordTitle(recording bool) string {
+	if recording {
+		return "Stop Recording"
+	}
+	return "Start Recording…"
+}
+
+// SetRecording switches the record item between "Start Recording…" and
+// "Stop Recording". A call before the menu exists is kept for it.
+func (m *windowsManager) SetRecording(recording bool) {
+	m.mu.Lock()
+	m.recording = recording
+	item := m.recordItem
+	m.mu.Unlock()
+	if item != nil {
+		item.SetTitle(recordTitle(recording))
+	}
 }
 
 // SetCountdown shows the seconds left in the tray tooltip (the Windows tray has

@@ -26,6 +26,14 @@ static NSMenuItem *cancelCountdownItem = nil;
 // A countdown value that arrived before the menu existed (0 = none).
 static int pendingCountdown = 0;
 
+// The record item: its title says what a click does now.
+static NSMenuItem *recordItem = nil;
+static BOOL recordingNow = NO;
+
+static NSString *recordTitle(BOOL recording) {
+    return recording ? @"Stop Recording" : @"Start Recording…";
+}
+
 // Delays offered for delayed capture; keep in step with tray.DelayChoices.
 static const int kDelayChoices[] = {3, 5, 10};
 static const int kDelayChoiceCount = 3;
@@ -212,7 +220,7 @@ static void create_status_item(void) {
         delayedItem.submenu = delayedMenu;
         [menu addItem:delayedItem];
 
-        NSMenuItem *recordItem = [[NSMenuItem alloc] initWithTitle:@"Record Screen / Stop Recording"
+        recordItem = [[NSMenuItem alloc] initWithTitle:recordTitle(recordingNow)
                                                             action:@selector(onRecord:)
                                                      keyEquivalent:@""];
         recordItem.target = delegate;
@@ -484,6 +492,14 @@ void tray_set_countdown(int remaining) {
         }
         pendingCountdown = 0;
         apply_countdown(remaining);
+    });
+}
+
+void tray_set_recording(int recording) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Kept for a menu that is still being created.
+        recordingNow = recording != 0;
+        if (recordItem != nil) recordItem.title = recordTitle(recordingNow);
     });
 }
 

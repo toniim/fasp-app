@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
-import { CaptureActiveDisplay, CaptureLastZone, CaptureZone, IsRecording, OpenImageDialog, ReadImageFile, ShowWindow } from '../bindings/github.com/heytonyne/fasp/app';
+import { CaptureActiveDisplay, CaptureLastZone, CaptureZone, IsRecording, OpenImageDialog, OpenRecordWindow, ReadImageFile, ShowWindow } from '../bindings/github.com/heytonyne/fasp/app';
 import { useEditorStore, selectHasContent } from './store/editorStore';
 import EditorWindow from './components/EditorWindow/EditorWindow';
 import SettingsWindow from './components/SettingsWindow/SettingsWindow';
 import PermissionWarning from './components/PermissionWarning/PermissionWarning';
 import Toast from './components/Toast/Toast';
-import RecordDialog from './components/Recording/RecordDialog';
 import RecordingBar from './components/Recording/RecordingBar';
 import RecordingDone, { RecordingResult } from './components/Recording/RecordingDone';
 import VideoViewer, { VideoInfo } from './components/VideoViewer/VideoViewer';
@@ -58,7 +57,6 @@ function App() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [showRecordDialog, setShowRecordDialog] = useState(false);
   const [recording, setRecording] = useState<{ mode: string; started_at: number } | null>(null);
   const [recordingDone, setRecordingDone] = useState<RecordingResult | null>(null);
   // A video shown in the in-app player; it takes the editor's place.
@@ -102,13 +100,7 @@ function App() {
       handleRepeatZone();
     });
 
-    const unsubscribeOpenRecord = Events.On('open:record', () => {
-      setRecordingDone(null);
-      setShowRecordDialog(true);
-    });
-
     const unsubscribeRecStarted = Events.On('recording:started', ({ data: status }) => {
-      setShowRecordDialog(false);
       setRecordingDone(null);
       setRecording(status);
     });
@@ -141,7 +133,6 @@ function App() {
     return () => {
       if (unsubscribeZone) unsubscribeZone();
       if (unsubscribeRepeatZone) unsubscribeRepeatZone();
-      if (unsubscribeOpenRecord) unsubscribeOpenRecord();
       if (unsubscribeRecStarted) unsubscribeRecStarted();
       if (unsubscribeRecFinished) unsubscribeRecFinished();
       if (unsubscribeOpenVideo) unsubscribeOpenVideo();
@@ -290,7 +281,7 @@ function App() {
             {Icons.zone}
             <span>Capture Zone</span>
           </button>
-          <button className="capture-button" onClick={() => setShowRecordDialog(true)}>
+          <button className="capture-button" onClick={() => OpenRecordWindow()}>
             {Icons.record}
             <span>Record Screen</span>
           </button>
@@ -306,7 +297,6 @@ function App() {
       )}
 
       {showSettings && <SettingsWindow onClose={() => setShowSettings(false)} />}
-      {showRecordDialog && <RecordDialog onClose={() => setShowRecordDialog(false)} />}
       {recordingDone && <RecordingDone result={recordingDone} onClose={() => setRecordingDone(null)} />}
 
       {toast && (

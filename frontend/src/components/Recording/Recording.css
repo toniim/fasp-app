@@ -6,6 +6,34 @@
   max-width: 560px;
 }
 
+/* The record dialog fills its own window: no backdrop, no floating card. The
+   window is sized to this content (RecordDialog fits it). */
+.record-standalone {
+  background: var(--color-bg-primary);
+  text-align: left;
+}
+
+html.record-page,
+html.record-page body {
+  background: var(--color-bg-primary);
+}
+
+.record-standalone .settings-window {
+  position: static;
+  transform: none;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  box-shadow: none;
+  animation: none;
+  overflow: visible;
+}
+
+.record-standalone .settings-content {
+  overflow: visible;
+}
+
 .record-modes {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
