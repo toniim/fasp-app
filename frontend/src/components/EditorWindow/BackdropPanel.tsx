@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import { COLOR_BACKDROPS, CUSTOM_BACKDROP_ID, BackdropPreset, paintBackdrop } from '../../utils/backdrops';
+import { BACKDROP_RATIOS, COLOR_BACKDROPS, CUSTOM_BACKDROP_ID, BackdropPreset, paintBackdrop } from '../../utils/backdrops';
 import { PHOTO_BACKDROPS } from '../../utils/backdrop-photos';
 import { OpenImageDialog, ReadImageFile } from '../../../wailsjs/go/main/App';
 
@@ -119,6 +119,22 @@ const BackdropPanel: React.FC<BackdropPanelProps> = ({ onClose }) => {
           </button>
         )}
         {chooseError && <span className="backdrop-error">{chooseError}</span>}
+      </div>
+      <div className="backdrop-row">
+        <span className="size-label">Size</span>
+        <div className="segmented" role="group" aria-label="Backdrop size">
+          {BACKDROP_RATIOS.map((ratio) => (
+            <button
+              key={ratio}
+              className={`segmented-button ${backdrop.ratio === ratio ? 'active' : ''}`}
+              onClick={() => setBackdrop({ ratio, enabled: true })}
+              title={ratio === 'auto' ? 'The shot plus its padding' : `Exports at ${ratio}; the shot stays centred`}
+              aria-pressed={backdrop.ratio === ratio}
+            >
+              {ratio === 'auto' ? 'Auto' : ratio}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="backdrop-row">
         <label className="size-label" htmlFor="backdrop-padding">Padding</label>

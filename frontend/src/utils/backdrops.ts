@@ -5,7 +5,7 @@
 // assets/backdrops/CREDITS.md); the user can also pick an image of their own.
 
 import { useEffect, useState } from 'react';
-import { BackdropSettings, Frame } from '../types';
+import { BackdropRatio, BackdropSettings, Frame } from '../types';
 import { PHOTO_BACKDROPS } from './backdrop-photos';
 
 // A soft colour spot: a radial gradient from color to transparent. x, y and r
@@ -78,9 +78,19 @@ export const COLOR_BACKDROPS: BackdropPreset[] = [
 
 export const BACKDROP_PRESETS: BackdropPreset[] = [...PHOTO_BACKDROPS, ...COLOR_BACKDROPS];
 
+export const BACKDROP_RATIOS: BackdropRatio[] = ['auto', '16:9', '1:1', '4:5', '3:2'];
+
+// Width / height of a ratio preset; null for auto.
+const ratioValue = (ratio: BackdropRatio): number | null => {
+  if (ratio === 'auto') return null;
+  const [w, h] = ratio.split(':').map(Number);
+  return w / h;
+};
+
 export const DEFAULT_BACKDROP: BackdropSettings = {
   enabled: false,
   presetId: 'hills',
+  ratio: 'auto',
   padding: 8,
   radius: 12,
   shadow: true,
@@ -190,13 +200,24 @@ export interface BackdropLayout {
 
 // Sizes scale with the shot, so a Retina capture and a small one look alike:
 // padding is a percentage of the longer side, and the radius is in px of a
-// shot 1200 px on its longer side.
+// shot 1200 px on its longer side. A ratio preset grows the padded box on one
+// axis until it has that ratio, so the padding is a minimum and the shot stays
+// centred (to the pixel, the odd pixel goes to the right / bottom).
 export function backdropLayout(frame: Frame, s: BackdropSettings): BackdropLayout {
   const side = Math.max(frame.width, frame.height);
   const pad = Math.round((side * s.padding) / 100);
   const unit = side / 1200;
+  let width = frame.width + 2 * pad;
+  let height = frame.height + 2 * pad;
+  const ratio = ratioValue(s.ratio ?? 'auto');
+  if (ratio !== null) {
+    if (width / height < ratio) width = Math.round(height * ratio);
+    else height = Math.round(width / ratio);
+  }
+  const left = Math.floor((width - frame.width) / 2);
+  const top = Math.floor((height - frame.height) / 2);
   return {
-    outer: { x: frame.x - pad, y: frame.y - pad, width: frame.width + 2 * pad, height: frame.height + 2 * pad },
+    outer: { x: frame.x - left, y: frame.y - top, width, height },
     radius: Math.min(s.radius * unit, Math.min(frame.width, frame.height) / 2),
     shadowBlur: 40 * unit,
     shadowOffset: 14 * unit,

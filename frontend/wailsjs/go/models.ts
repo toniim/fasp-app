@@ -176,7 +176,8 @@ export namespace model {
 	    record_microphone: boolean;
 	    record_mic_device: string;
 	    record_fps: number;
-	
+	    editor_prefs?: {[key: string]: any};
+
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
 	    }
@@ -200,6 +201,7 @@ export namespace model {
 	        this.record_microphone = source["record_microphone"];
 	        this.record_mic_device = source["record_mic_device"];
 	        this.record_fps = source["record_fps"];
+	        this.editor_prefs = source["editor_prefs"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

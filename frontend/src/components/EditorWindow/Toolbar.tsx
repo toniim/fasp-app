@@ -1,11 +1,11 @@
 import React, { useCallback, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import { AnnotationTool } from '../../types';
+import { AnnotationTool, BlurMode } from '../../types';
 import { CaptureActiveDisplay, OpenImageDialog, ReadImageFile, ShowWindow } from '../../../wailsjs/go/main/App';
 import { WindowHide } from '../../../wailsjs/runtime/runtime';
 import Toast from '../Toast/Toast';
 import BackdropPanel from './BackdropPanel';
-import { fontForSize, strokeForSize } from '../../utils/annotation-sizes';
+import { fontForSize, markerForSize, strokeForSize } from '../../utils/annotation-sizes';
 
 // SVG Icons - Clean, macOS-style line icons
 const Icons = {
@@ -23,6 +23,27 @@ const Icons = {
   rectangle: (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="3" width="12" height="10" rx="1" />
+    </svg>
+  ),
+  ellipse: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="8" cy="8" rx="6" ry="4.5" />
+    </svg>
+  ),
+  line: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 13L13 3" />
+    </svg>
+  ),
+  pen: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12C4 5 6 5 7 9C8 12 10 10 14 4" />
+    </svg>
+  ),
+  marker: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 13H13" strokeWidth="3" strokeOpacity="0.4" />
+      <path d="M9.5 2.5L13 6L7 12L3.5 12.5L4 9L9.5 2.5Z" />
     </svg>
   ),
   arrow: (
@@ -144,16 +165,25 @@ const Toolbar: React.FC = () => {
     images, selectedImageId, background, setBackground, addImage, bringForward, sendBackward,
     imageGap, arrangeImages, setImageGap,
     annotations, selectedAnnotationId, updateAnnotation, highlightOptions, setHighlightOptions,
-    rectangleRadius, setRectangleRadius, backdrop,
+    rectangleRadius, setRectangleRadius, backdrop, blurMode, setBlurMode,
   } = useEditorStore();
   const [backdropOpen, setBackdropOpen] = useState(false);
   const closeBackdrop = useCallback(() => setBackdropOpen(false), []);
-  // A selected highlight or rectangle shows its tool's settings too, so it can
-  // be tuned with the select tool after drawing.
+  // A selected highlight, rectangle or blur box shows its tool's settings too,
+  // so it can be tuned with the select tool after drawing.
   const selectedAnnotation = annotations.find((a) => a.id === selectedAnnotationId);
   const selectedShape =
     selectedAnnotation?.type === 'highlight' || selectedAnnotation?.type === 'rectangle' ? selectedAnnotation : null;
-  const optionsTool: AnnotationTool = selectedShape ? selectedShape.type : selectedTool;
+  const selectedBlur = selectedAnnotation?.type === 'blur' ? selectedAnnotation : null;
+  const optionsTool: AnnotationTool = selectedShape ? selectedShape.type : selectedBlur ? 'blur' : selectedTool;
+  // Blur has a mode instead of a colour and a size, highlight its own sliders.
+  const hasColorAndSize = optionsTool !== 'highlight' && optionsTool !== 'blur';
+  const shownBlurMode = selectedBlur ? selectedBlur.blurMode ?? 'secure' : blurMode;
+  const blurModes: { id: BlurMode; label: string; title: string }[] = [
+    { id: 'secure', label: 'Secure', title: 'Opaque pattern: nothing of the picture is left' },
+    { id: 'blur', label: 'Blur', title: 'Soft blur: the content stays recognisable' },
+    { id: 'pixelate', label: 'Pixelate', title: 'Mosaic: the content stays recognisable' },
+  ];
 
   // Corners slider of the highlight and rectangle tools: sets the radius new
   // boxes get and, when a box of that kind is selected, changes that box.
@@ -233,9 +263,13 @@ const Toolbar: React.FC = () => {
     { id: 'select', label: 'Select', icon: Icons.select, shortcut: 'S' },
     { id: 'crop', label: 'Crop', icon: Icons.crop, shortcut: 'C' },
     { id: 'rectangle', label: 'Rectangle', icon: Icons.rectangle, shortcut: 'R' },
+    { id: 'ellipse', label: 'Ellipse', icon: Icons.ellipse, shortcut: 'E' },
+    { id: 'line', label: 'Line', icon: Icons.line, shortcut: 'L' },
     { id: 'arrow', label: 'Arrow', icon: Icons.arrow, shortcut: 'A' },
     { id: 'numbered-arrow', label: 'Numbered Arrow', icon: Icons.numberedArrow, shortcut: 'N' },
     { id: 'arrow-text', label: 'Arrow with Text', icon: Icons.arrowText, shortcut: 'W' },
+    { id: 'pen', label: 'Pen', icon: Icons.pen, shortcut: 'P' },
+    { id: 'marker', label: 'Marker', icon: Icons.marker, shortcut: 'M' },
     { id: 'text', label: 'Text', icon: Icons.text, shortcut: 'T' },
     { id: 'highlight', label: 'Highlight', icon: Icons.highlight, shortcut: 'H' },
     { id: 'blur', label: 'Blur', icon: Icons.blur, shortcut: 'B' },
@@ -290,7 +324,25 @@ const Toolbar: React.FC = () => {
             {cornersSlider('highlight', highlightOptions.radius, (radius) => setHighlightOptions({ radius }))}
           </>
         )}
-        {optionsTool !== 'highlight' && (
+        {optionsTool === 'blur' && (
+          <div className="toolbar-size">
+            <span className="size-label">Mode</span>
+            <div className="segmented" role="group" aria-label="Blur mode">
+              {blurModes.map((m) => (
+                <button
+                  key={m.id}
+                  className={`segmented-button ${shownBlurMode === m.id ? 'active' : ''}`}
+                  onClick={() => setBlurMode(m.id)}
+                  title={m.title}
+                  aria-pressed={shownBlurMode === m.id}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {hasColorAndSize && (
           <div className="toolbar-size">
             <label className="size-label">Size</label>
             <input
@@ -305,15 +357,17 @@ const Toolbar: React.FC = () => {
             <span className="size-value">
               {selectedTool === 'text' || selectedAnnotation?.type === 'text'
                 ? `${fontForSize(selectedSize)}px`
-                : `${strokeForSize(selectedSize)}px`}
+                : optionsTool === 'marker' || selectedAnnotation?.type === 'marker'
+                  ? `${markerForSize(selectedSize)}px`
+                  : `${strokeForSize(selectedSize)}px`}
             </span>
           </div>
         )}
         {optionsTool === 'rectangle' && cornersSlider('rectangle', rectangleRadius, setRectangleRadius)}
       </div>
-      {/* Highlight has no colour; the empty slot keeps the bar from shifting. */}
+      {/* Highlight and blur have no colour; the empty slot keeps the bar from shifting. */}
       <div className="toolbar-colors">
-        {optionsTool !== 'highlight' && colors.map((color) => (
+        {hasColorAndSize && colors.map((color) => (
           <button
             key={color.value}
             className={`color-button ${selectedColor === color.value ? 'active' : ''}`}
@@ -324,7 +378,7 @@ const Toolbar: React.FC = () => {
             title={color.label}
           />
         ))}
-        {optionsTool !== 'highlight' && (
+        {hasColorAndSize && (
           <input
             type="color"
             value={selectedColor}

@@ -70,3 +70,36 @@ func TestSetRecordingSettings(t *testing.T) {
 		t.Errorf("settings not persisted: %+v", got)
 	}
 }
+
+// The editor's tool settings come back from the file as the frontend wrote
+// them, nested values included; a file without them still loads.
+func TestEditorPrefsRoundTrip(t *testing.T) {
+	old := newTestService(t, `{"default_format":"jpeg"}`)
+	if old.settings.EditorPrefs != nil {
+		t.Errorf("old settings file should have no editor prefs, got %v", old.settings.EditorPrefs)
+	}
+
+	s := newTestService(t, "")
+	prefs := map[string]interface{}{
+		"blurMode":        "pixelate",
+		"rectangleRadius": float64(12),
+		"backdrop":        map[string]interface{}{"enabled": true, "ratio": "16:9", "padding": float64(8)},
+	}
+	if err := s.Set("editor_prefs", prefs); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Set("editor_prefs", "not an object"); err == nil {
+		t.Error("editor_prefs must be an object")
+	}
+
+	reloaded := newTestService(t, "")
+	reloaded.filePath = s.filePath
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	got := reloaded.settings.EditorPrefs
+	backdrop, _ := got["backdrop"].(map[string]interface{})
+	if got["blurMode"] != "pixelate" || got["rectangleRadius"] != float64(12) || backdrop["ratio"] != "16:9" || backdrop["enabled"] != true {
+		t.Errorf("editor prefs not persisted: %v", got)
+	}
+}

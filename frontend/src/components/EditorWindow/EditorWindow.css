@@ -184,6 +184,38 @@
   text-align: right;
 }
 
+/* Segmented choice: the Mode of the blur tool, the Size of the backdrop */
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+}
+
+.segmented-button {
+  flex: 1;
+  padding: 3px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.segmented-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.segmented-button.active {
+  background: var(--color-accent);
+  color: white;
+}
+
 /* Toolbar Actions - Undo/Redo */
 .toolbar-actions {
   display: flex;

@@ -10,7 +10,10 @@ import { GetVersion, ReadClipboardImage, ReadImageFile } from '../../../wailsjs/
 import { OnFileDrop, OnFileDropOff } from '../../../wailsjs/runtime/runtime';
 import { IMAGE_GAP, fitScale, viewportSize, clampPosition, keepInView, canPan, alignToDevicePixels } from '../../utils/editor-geometry';
 import { backdropLayout, backdropPreset, paintBackdrop, useBackdropPhoto } from '../../utils/backdrops';
-import { fontForSize, strokeForSize } from '../../utils/annotation-sizes';
+import { MARKER_OPACITY, fontForSize, markerForSize, strokeForSize } from '../../utils/annotation-sizes';
+import { hasPoints, isFreehand, simplifyPoints } from '../../utils/annotation-kinds';
+import { initEditorPrefs } from '../../utils/editor-prefs';
+import BlurEffectShape from './BlurEffectShape';
 import './EditorWindow.css';
 
 // Node name of everything that counts as empty canvas for the marquee: the
@@ -79,6 +82,7 @@ const EditorWindow: React.FC = () => {
     selectedSize,
     highlightOptions,
     rectangleRadius,
+    blurMode,
     backdrop,
     cropRegion,
     pendingCrop,
@@ -181,6 +185,12 @@ const EditorWindow: React.FC = () => {
   // Latest view for the drop handler, which is registered once.
   const viewRef = useRef({ frame: viewFrame, stagePos, viewScale });
   viewRef.current = { frame: viewFrame, stagePos, viewScale };
+
+  // Saved tool settings (backdrop, highlight, corners, blur mode) load once per
+  // run; later changes are saved by the same module.
+  useEffect(() => {
+    initEditorPrefs();
+  }, []);
 
   // Load version
   useEffect(() => {
@@ -740,6 +750,22 @@ const EditorWindow: React.FC = () => {
             e.preventDefault();
             setSelectedTool('blur');
             break;
+          case 'p':
+            e.preventDefault();
+            setSelectedTool('pen');
+            break;
+          case 'm':
+            e.preventDefault();
+            setSelectedTool('marker');
+            break;
+          case 'l':
+            e.preventDefault();
+            setSelectedTool('line');
+            break;
+          case 'e':
+            e.preventDefault();
+            setSelectedTool('ellipse');
+            break;
         }
       }
     };
@@ -839,8 +865,9 @@ const EditorWindow: React.FC = () => {
     const pos = getAdjustedPointerPosition(stage);
 
     // Check if clicking on an existing annotation of the same type
-    // If yes, select it instead of creating new one
-    if (e.target !== stage) {
+    // If yes, select it instead of creating new one. Freehand tools always
+    // draw: a stroke across an earlier one must not select it.
+    if (e.target !== stage && !isFreehand(selectedTool)) {
       // Find the annotation that was clicked
       const clickedAnnotation = annotations.find(ann => {
         const shape = shapeRefs.current[ann.id];
@@ -914,6 +941,34 @@ const EditorWindow: React.FC = () => {
           cornerRadius: rectangleRadius,
         });
         break;
+      case 'ellipse':
+        setCurrentAnnotation({
+          ...baseAnnotation,
+          width: 0,
+          height: 0,
+          stroke: selectedColor,
+          strokeWidth,
+          fill: 'transparent',
+        });
+        break;
+      case 'line':
+      case 'pen':
+        setCurrentAnnotation({
+          ...baseAnnotation,
+          points: [pos.x, pos.y, pos.x, pos.y],
+          stroke: selectedColor,
+          strokeWidth,
+        });
+        break;
+      case 'marker':
+        setCurrentAnnotation({
+          ...baseAnnotation,
+          points: [pos.x, pos.y, pos.x, pos.y],
+          stroke: selectedColor,
+          strokeWidth: markerForSize(selectedSize) * px,
+          opacity: MARKER_OPACITY,
+        });
+        break;
       case 'highlight':
         // A spotlight box: drawSpotlight dims everything around it.
         setCurrentAnnotation({
@@ -930,6 +985,7 @@ const EditorWindow: React.FC = () => {
           height: 0,
           fill: '#ffffff',
           opacity: 1,
+          blurMode,
         });
         break;
       case 'arrow':
@@ -1028,17 +1084,26 @@ const EditorWindow: React.FC = () => {
 
     if (!currentAnnotation) return;
 
-    if (selectedTool === 'rectangle' || selectedTool === 'highlight' || selectedTool === 'blur' || selectedTool === 'text') {
+    if (selectedTool === 'rectangle' || selectedTool === 'ellipse' || selectedTool === 'highlight' || selectedTool === 'blur' || selectedTool === 'text') {
       setCurrentAnnotation({
         ...currentAnnotation,
         width: pos.x - currentAnnotation.x,
         height: pos.y - currentAnnotation.y,
       });
-    } else if (selectedTool === 'arrow' || selectedTool === 'arrow-text' || selectedTool === 'numbered-arrow') {
+    } else if (selectedTool === 'arrow' || selectedTool === 'arrow-text' || selectedTool === 'numbered-arrow' || selectedTool === 'line') {
       setCurrentAnnotation({
         ...currentAnnotation,
         points: [currentAnnotation.x, currentAnnotation.y, pos.x, pos.y],
       });
+    } else if (isFreehand(selectedTool) && currentAnnotation.points) {
+      // Add a point once the pointer has moved a pixel: hand jitter below that
+      // only bloats the stroke.
+      const pts = currentAnnotation.points;
+      const lastX = pts[pts.length - 2];
+      const lastY = pts[pts.length - 1];
+      if (Math.hypot(pos.x - lastX, pos.y - lastY) >= px) {
+        setCurrentAnnotation({ ...currentAnnotation, points: [...pts, pos.x, pos.y] });
+      }
     }
   };
 
@@ -1168,7 +1233,31 @@ const EditorWindow: React.FC = () => {
       }
     }
 
-    if (annToAdd.width !== 0 || annToAdd.height !== 0 || annToAdd.points) {
+    // Freehand strokes keep their shape with far fewer points.
+    if (isFreehand(selectedTool) && annToAdd.points) {
+      annToAdd = { ...annToAdd, points: simplifyPoints(annToAdd.points, 0.8 * px) };
+    }
+    // A click without a drag is no line.
+    let discard = false;
+    if (selectedTool === 'line' && annToAdd.points) {
+      const [sx, sy, ex, ey] = annToAdd.points;
+      discard = Math.hypot(ex - sx, ey - sy) < 3 * px;
+    }
+    // Boxes of the ellipse and blur tools store their top-left corner and a
+    // positive size, so a move or resize starts from the box the node shows.
+    if ((selectedTool === 'ellipse' || selectedTool === 'blur') && annToAdd.width !== undefined && annToAdd.height !== undefined) {
+      const bw = annToAdd.width;
+      const bh = annToAdd.height;
+      annToAdd = {
+        ...annToAdd,
+        x: bw < 0 ? annToAdd.x + bw : annToAdd.x,
+        y: bh < 0 ? annToAdd.y + bh : annToAdd.y,
+        width: Math.abs(bw),
+        height: Math.abs(bh),
+      };
+    }
+
+    if (!discard && (annToAdd.width !== 0 || annToAdd.height !== 0 || annToAdd.points)) {
       // For arrow-text, start inline editing of the label (same UX as the text tool)
       if (selectedTool === 'arrow-text' && annToAdd.points) {
         const tempAnnotation = { ...annToAdd, fontSize: annToAdd.fontSize || 16 * px };
@@ -1313,8 +1402,8 @@ const EditorWindow: React.FC = () => {
     const ann = annotations.find((a) => a.id === annId);
     if (!ann) return;
 
-    // For annotations with points (arrows), update points instead of x/y
-    if (ann.points && (ann.type === 'arrow' || ann.type === 'arrow-text' || ann.type === 'numbered-arrow')) {
+    // For annotations with points (arrows, lines, strokes), update points instead of x/y
+    if (hasPoints(ann)) {
       const deltaX = node.x();
       const deltaY = node.y();
 
@@ -1346,9 +1435,10 @@ const EditorWindow: React.FC = () => {
     const scaleX = node.scaleX();
     const scaleY = node.scaleY();
 
-    // Point-based annotations (arrows): bake the transformer's scale/rotation/
-    // position into the points so the resize/rotate sticks, then reset the node.
-    if (ann.points && (ann.type === 'arrow' || ann.type === 'arrow-text' || ann.type === 'numbered-arrow')) {
+    // Point-based annotations (arrows, lines, strokes): bake the transformer's
+    // scale/rotation/position into the points so the resize/rotate sticks, then
+    // reset the node.
+    if (hasPoints(ann)) {
       const transform = node.getTransform().copy();
       const newPoints: number[] = [];
       for (let i = 0; i < ann.points.length; i += 2) {
@@ -1368,7 +1458,7 @@ const EditorWindow: React.FC = () => {
     node.scaleY(1);
 
     // Update annotation with new dimensions (and rotation from the transformer)
-    if (ann.type === 'rectangle' || ann.type === 'highlight' || ann.type === 'blur') {
+    if (ann.type === 'rectangle' || ann.type === 'ellipse' || ann.type === 'highlight' || ann.type === 'blur') {
       updateAnnotation(annId, {
         x: node.x(),
         y: node.y(),
@@ -1502,6 +1592,69 @@ const EditorWindow: React.FC = () => {
             onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
           />
         );
+      case 'ellipse': {
+        const ew = ann.width ?? 0;
+        const eh = ann.height ?? 0;
+        return (
+          <Shape
+            key={ann.id}
+            ref={(node) => {
+              if (node) shapeRefs.current[ann.id] = node;
+            }}
+            x={ann.x}
+            y={ann.y}
+            width={ew}
+            height={eh}
+            rotation={ann.rotation || 0}
+            stroke={ann.stroke}
+            strokeWidth={ann.strokeWidth}
+            // As for the rectangle: a transparent fill makes the inside
+            // grabbable, a wide hit-stroke the outline.
+            fill="transparent"
+            hitStrokeWidth={Math.max(ann.strokeWidth || 2 * px, 16 * px)}
+            sceneFunc={(ctx, shape) => {
+              const c = ctx._context;
+              c.beginPath();
+              c.ellipse(ew / 2, eh / 2, Math.abs(ew) / 2, Math.abs(eh) / 2, 0, 0, Math.PI * 2);
+              ctx.fillStrokeShape(shape);
+            }}
+            draggable={isDraggable}
+            onClick={selectOnClick}
+            onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
+            onMouseLeave={handleAnnotationMouseLeave}
+            onDragEnd={(e) => handleDragEnd(e, ann.id)}
+            onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
+          />
+        );
+      }
+      case 'line':
+      case 'pen':
+      case 'marker':
+        // Points are in doc px and the node stays at the origin: a move or
+        // transform is baked into the points (see handleDragEnd).
+        return (
+          <Line
+            key={ann.id}
+            ref={(node) => {
+              if (node) shapeRefs.current[ann.id] = node;
+            }}
+            points={ann.points || []}
+            stroke={ann.stroke}
+            strokeWidth={ann.strokeWidth}
+            opacity={ann.opacity ?? 1}
+            // Freehand strokes are smoothed; a line is straight.
+            tension={ann.type === 'line' ? 0 : 0.4}
+            lineCap={ann.type === 'marker' ? 'square' : 'round'}
+            lineJoin="round"
+            hitStrokeWidth={Math.max(ann.strokeWidth || 2 * px, 16 * px)}
+            draggable={isDraggable}
+            onClick={selectOnClick}
+            onMouseEnter={() => handleAnnotationMouseEnter(ann.id)}
+            onMouseLeave={handleAnnotationMouseLeave}
+            onDragEnd={(e) => handleDragEnd(e, ann.id)}
+            onTransformEnd={(e) => handleTransformEnd(e, ann.id)}
+          />
+        );
       case 'highlight':
         return (
           <Rect
@@ -1529,9 +1682,36 @@ const EditorWindow: React.FC = () => {
           />
         );
       case 'blur':
-        // Redacts sensitive information with a textured pattern (softer look
-        // than solid black). It must stay fully opaque: any transparency lets
-        // the text underneath show through, and a contrast boost on the
+        // Blur and pixelate keep the look of the content, so they can still be
+        // read back in part: they are for tidying, not for secrets.
+        if (ann.blurMode === 'blur' || ann.blurMode === 'pixelate') {
+          return (
+            <BlurEffectShape
+              key={ann.id}
+              ann={ann}
+              mode={ann.blurMode}
+              images={images}
+              elements={imageElsRef.current}
+              version={loadedCount}
+              background={imagesSelectable ? background : null}
+              unit={u}
+              shapeProps={{
+                draggable: isDraggable,
+                onClick: selectOnClick,
+                onMouseEnter: () => handleAnnotationMouseEnter(ann.id),
+                onMouseLeave: handleAnnotationMouseLeave,
+                onDragEnd: (e: any) => handleDragEnd(e, ann.id),
+                onTransformEnd: (e: any) => handleTransformEnd(e, ann.id),
+              }}
+              register={(node) => {
+                if (node) shapeRefs.current[ann.id] = node;
+              }}
+            />
+          );
+        }
+        // Secure: redacts sensitive information with a textured pattern (softer
+        // look than solid black). It must stay fully opaque: any transparency
+        // lets the text underneath show through, and a contrast boost on the
         // exported image makes it readable again.
         return (
           <Rect

@@ -46,6 +46,8 @@ export interface Settings {
   record_microphone?: boolean;
   record_mic_device?: string;
   record_fps?: number;
+  // Editor tool settings kept across restarts (see utils/editor-prefs.ts).
+  editor_prefs?: Record<string, unknown>;
   defaultSaveLocation?: string; // Alias for compatibility
   defaultFormat?: string; // Alias for compatibility
 }
@@ -59,7 +61,13 @@ export interface UploadProvider {
 
 // Frontend-specific types
 
-export type AnnotationTool = 'select' | 'rectangle' | 'arrow' | 'numbered-arrow' | 'arrow-text' | 'text' | 'highlight' | 'blur' | 'crop';
+export type AnnotationTool =
+  | 'select' | 'rectangle' | 'ellipse' | 'line' | 'pen' | 'marker'
+  | 'arrow' | 'numbered-arrow' | 'arrow-text' | 'text' | 'highlight' | 'blur' | 'crop';
+
+// How a blur box hides what is under it. secure: an opaque pattern, nothing
+// of the picture is left. blur / pixelate keep the look of the content.
+export type BlurMode = 'secure' | 'blur' | 'pixelate';
 
 export interface Annotation {
   id: string;
@@ -68,6 +76,8 @@ export interface Annotation {
   y: number;
   width?: number;
   height?: number;
+  // Blur boxes only; absent means secure.
+  blurMode?: BlurMode;
   points?: number[];
   text?: string;
   fontSize?: number;
@@ -130,9 +140,14 @@ export type ArrangeMode = 'row' | 'column' | 'grid';
 // A background picture behind the shot with a margin around it, for sharing.
 // Part of the exported picture; a setting like colour and size (kept across
 // shots, not part of undo).
+// Shape of the exported picture with a backdrop: auto = the shot plus its
+// padding, else that ratio (width:height) with the shot centred.
+export type BackdropRatio = 'auto' | '16:9' | '1:1' | '4:5' | '3:2';
+
 export interface BackdropSettings {
   enabled: boolean;
   presetId: string;
+  ratio: BackdropRatio;
   padding: number; // margin, % of the shot's longer side
   radius: number; // corner radius of the shot (px of a 1200 px shot)
   shadow: boolean;
@@ -177,6 +192,8 @@ export interface EditorState {
   highlightOptions: HighlightOptions;
   // Corner radius new rectangles get (screen px); a tool setting like above.
   rectangleRadius: number;
+  // Mode new blur boxes get; a tool setting like above.
+  blurMode: BlurMode;
   backdrop: BackdropSettings;
   cropRegion: CropRegion | null; // doc px
   // An image just added by Add shot that is waiting for its crop. Not part of

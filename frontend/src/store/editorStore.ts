@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { Annotation, AnnotationTool, ArrangeMode, BackdropSettings, CanvasImage, DocSnapshot, EditorState, CropRegion, Frame, HighlightOptions } from '../types';
+import { Annotation, AnnotationTool, ArrangeMode, BackdropSettings, BlurMode, CanvasImage, DocSnapshot, EditorState, CropRegion, Frame, HighlightOptions } from '../types';
 import { DEFAULT_BACKDROP } from '../utils/backdrops';
-import { fontForSize, strokeForSize } from '../utils/annotation-sizes';
+import { fontForSize, markerForSize, strokeForSize } from '../utils/annotation-sizes';
 import { IMAGE_GAP, autoFrame, boundsOf, growFrame } from '../utils/editor-geometry';
 import { arrange } from '../utils/image-layout';
 
@@ -46,6 +46,8 @@ interface EditorStore extends EditorState {
   setSelectedSize: (size: number) => void;
   setHighlightOptions: (options: Partial<HighlightOptions>) => void;
   setRectangleRadius: (radius: number) => void;
+  // Sets the mode new blur boxes get and changes the selected blur boxes.
+  setBlurMode: (mode: BlurMode) => void;
   setBackdrop: (settings: Partial<BackdropSettings>) => void;
   setCropRegion: (region: CropRegion | null) => void;
   applyCrop: () => void;
@@ -79,6 +81,7 @@ const initialState: EditorState = {
   selectedSize: 2, // Default stroke width / font size multiplier
   highlightOptions: { dim: 0.5, radius: 8 },
   rectangleRadius: 0,
+  blurMode: 'secure',
   backdrop: DEFAULT_BACKDROP,
   cropRegion: null,
   pendingCrop: null,
@@ -93,6 +96,10 @@ const initialState: EditorState = {
 const colorUpdates = (ann: Annotation, color: string): Partial<Annotation> | null => {
   switch (ann.type) {
     case 'rectangle':
+    case 'ellipse':
+    case 'line':
+    case 'pen':
+    case 'marker':
     case 'arrow':
     case 'arrow-text':
       return ann.stroke === color ? null : { stroke: color };
@@ -113,10 +120,17 @@ const sizeUpdates = (ann: Annotation, size: number): Partial<Annotation> | null 
   const unit = ann.unit ?? 1;
   switch (ann.type) {
     case 'rectangle':
+    case 'ellipse':
+    case 'line':
+    case 'pen':
     case 'arrow':
     case 'arrow-text':
     case 'numbered-arrow': {
       const strokeWidth = strokeForSize(size) * unit;
+      return ann.strokeWidth === strokeWidth ? null : { strokeWidth };
+    }
+    case 'marker': {
+      const strokeWidth = markerForSize(size) * unit;
       return ann.strokeWidth === strokeWidth ? null : { strokeWidth };
     }
     case 'text': {
@@ -491,6 +505,13 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     setRectangleRadius: (radius: number) => {
       set({ rectangleRadius: radius });
+    },
+
+    setBlurMode: (mode: BlurMode) => {
+      set({ blurMode: mode });
+      editSelection('blurMode', (ann) =>
+        ann.type === 'blur' && (ann.blurMode ?? 'secure') !== mode ? { blurMode: mode } : null,
+      );
     },
 
     setBackdrop: (settings: Partial<BackdropSettings>) => {

@@ -88,6 +88,11 @@ type Settings struct {
 	RecordMicrophone  bool   `json:"record_microphone"`
 	RecordMicDevice   string `json:"record_mic_device"` // "" = system default
 	RecordFPS         int    `json:"record_fps"`
+
+	// EditorPrefs holds the editor's tool settings (backdrop, highlight, blur
+	// mode, ...). The frontend owns its shape: it is kept as written, so a new
+	// editor option needs no change here. Nil when never saved.
+	EditorPrefs map[string]interface{} `json:"editor_prefs,omitempty"`
 }
 
 // DefaultSettings returns default application settings

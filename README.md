@@ -131,14 +131,20 @@ Pick a tool in the toolbar or press its key, choose a colour and a size, then dr
 | Select | `S` | Select, move, resize and rotate annotations; drag on empty space to select several |
 | Crop | `C` | Drag the area to keep, then **Apply Crop** (`Enter`) or **Cancel** (`Esc`). Crops the selected image, or the whole canvas when no image is selected |
 | Rectangle | `R` | Outline an area. **Corners** in the toolbar rounds the corners of new rectangles, or of the selected one |
+| Ellipse | `E` | Outline an area with an oval |
+| Line | `L` | A straight line |
 | Arrow | `A` | Point at something |
 | Numbered arrow | `N` | Arrow with a step number that counts up: 1, 2, 3… |
 | Arrow with text | `W` | Arrow with a label at its tail |
+| Pen | `P` | Draw freehand; the line is smoothed |
+| Marker | `M` | Wide, see-through freehand stroke, like a highlighter pen |
 | Text | `T` | Drag a box and type; `Enter` adds a line, `Esc` or clicking away finishes |
 | Highlight | `H` | Spotlight: the box stays bright and the rest of the picture is dimmed. Several boxes stay bright together. While it is in use (or a highlight is selected) the toolbar shows **Darkness** (how dark the rest gets) and **Corners** (corner radius) |
-| Blur | `B` | Opaque pattern that hides passwords, keys and personal data |
+| Blur | `B` | Hide part of the picture. **Mode** in the toolbar (or on a selected box) picks how: **Secure** is an opaque pattern that hides passwords, keys and personal data; **Blur** and **Pixelate** keep the look of the content but are not safe for secrets, because the text can often still be guessed |
 
-Size: `[` and `]`, or `Ctrl+1` … `Ctrl+5`. Undo `Ctrl+Z`, redo `Ctrl+Shift+Z`. Delete the selection with `Delete`, `Backspace` or `Ctrl+D`; select everything with `Ctrl+A`. Paste an image from the clipboard with `Ctrl+V`.
+Size: `[` and `]`, or `Ctrl+1` … `Ctrl+5` (it also sets the width of the line, pen and marker). Undo `Ctrl+Z`, redo `Ctrl+Shift+Z`. Delete the selection with `Delete`, `Backspace` or `Ctrl+D`; select everything with `Ctrl+A`. Paste an image from the clipboard with `Ctrl+V`.
+
+The settings of the tools stay for the next time you open Fasp: backdrop, highlight darkness and corners, rectangle corners and the blur mode.
 
 ![Cropping a capture: the area outside the dashed box is dimmed](docs/screenshots/crop.png)
 
@@ -175,9 +181,10 @@ Click **Backdrop** in the toolbar to put the shot on a background before you sha
 
 - Pick a background: twelve nature **Photos** (mountains, fog, aurora, dunes, sea), twelve **Colors** (gradients and soft colour blends), or **Choose image…** to use a picture of your own (kept until you quit Fasp). Picking one turns the backdrop on; untick **Put the shot on a background** to turn it off.
 - The photos are public domain (CC0) pictures from Wikimedia Commons; their authors and sources are listed in [`frontend/src/assets/backdrops/CREDITS.md`](frontend/src/assets/backdrops/CREDITS.md).
+- **Size** sets the shape of the exported picture: **Auto** is the shot plus its padding; **16:9**, **1:1**, **4:5** and **3:2** make the picture that shape, with the shot in the middle and the background filling the rest. Padding is the smallest margin, so the picture can be larger than Auto but never tighter.
 - **Padding** sets the margin around the shot (a percentage of its longer side), **Corners** rounds the shot's corners, **Shadow** adds a soft shadow under it.
 - Sizes follow the shot, so a Retina capture and a small one look the same.
-- The backdrop stays on for the next shots until you turn it off. Annotations stay on the shot, and cropping crops the shot, not the backdrop.
+- The backdrop stays on for the next shots, and after you restart Fasp, until you turn it off. Your own background image is not kept after a restart. Annotations stay on the shot, and cropping crops the shot, not the backdrop.
 
 ### Zoom and pan
 

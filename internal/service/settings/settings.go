@@ -90,6 +90,8 @@ func (s *serviceImpl) Get(key string) (interface{}, error) {
 		return s.settings.WindowWidth, nil
 	case "window_height":
 		return s.settings.WindowHeight, nil
+	case "editor_prefs":
+		return s.settings.EditorPrefs, nil
 	default:
 		return nil, fmt.Errorf("unknown setting key: %s", key)
 	}
@@ -205,6 +207,12 @@ func (s *serviceImpl) Set(key string, value interface{}) error {
 			s.settings.RecordFPS = v
 		} else {
 			return fmt.Errorf("record_fps must be 15, 30 or 60")
+		}
+	case "editor_prefs":
+		if v, ok := value.(map[string]interface{}); ok {
+			s.settings.EditorPrefs = v
+		} else {
+			return fmt.Errorf("invalid type for editor_prefs")
 		}
 	default:
 		return fmt.Errorf("unknown setting key: %s", key)
