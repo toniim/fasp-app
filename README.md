@@ -124,7 +124,7 @@ Windows 10 draws a yellow border around what is being recorded; Windows 11 does 
 
 ### Annotate
 
-Pick a tool in the toolbar or press its key, choose a colour and a size, then drag on the image.
+Pick a tool in the toolbar or press its key, choose a colour and a size, then drag on the image. To change an annotation you already drew, select it (or several, with a drag on empty canvas or `Ctrl+A`) and pick another colour or size: it applies to the selection, as one undo step.
 
 | Tool | Key | What it does |
 |---|---|---|

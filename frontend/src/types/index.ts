@@ -163,6 +163,8 @@ export interface EditorState {
   annotations: Annotation[];
   selectedTool: AnnotationTool;
   selectedAnnotationId: string | null;
+  // Annotations selected together (marquee, Select all). Not part of undo.
+  multiSelectedIds: string[];
   // Selection is not part of undo. An image and an annotation are never
   // selected together.
   selectedImageId: string | null;

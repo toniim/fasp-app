@@ -5,6 +5,7 @@ import { CaptureActiveDisplay, OpenImageDialog, ReadImageFile, ShowWindow } from
 import { WindowHide } from '../../../wailsjs/runtime/runtime';
 import Toast from '../Toast/Toast';
 import BackdropPanel from './BackdropPanel';
+import { fontForSize, strokeForSize } from '../../utils/annotation-sizes';
 
 // SVG Icons - Clean, macOS-style line icons
 const Icons = {
@@ -302,10 +303,9 @@ const Toolbar: React.FC = () => {
               title={`Size: ${selectedSize} (${modKey}+1-5 or [ / ])`}
             />
             <span className="size-value">
-              {selectedTool === 'text'
-                ? `${selectedSize === 1 ? 12 : selectedSize === 2 ? 16 : selectedSize === 3 ? 20 : selectedSize === 4 ? 24 : 32}px`
-                : `${selectedSize === 1 ? 1 : selectedSize === 2 ? 2 : selectedSize === 3 ? 4 : selectedSize === 4 ? 6 : 8}px`
-              }
+              {selectedTool === 'text' || selectedAnnotation?.type === 'text'
+                ? `${fontForSize(selectedSize)}px`
+                : `${strokeForSize(selectedSize)}px`}
             </span>
           </div>
         )}

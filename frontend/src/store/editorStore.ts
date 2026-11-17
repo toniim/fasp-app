@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Annotation, AnnotationTool, ArrangeMode, BackdropSettings, CanvasImage, DocSnapshot, EditorState, CropRegion, Frame, HighlightOptions } from '../types';
 import { DEFAULT_BACKDROP } from '../utils/backdrops';
+import { fontForSize, strokeForSize } from '../utils/annotation-sizes';
 import { IMAGE_GAP, autoFrame, boundsOf, growFrame } from '../utils/editor-geometry';
 import { arrange } from '../utils/image-layout';
 
@@ -41,6 +42,7 @@ interface EditorStore extends EditorState {
   setSelectedImage: (id: string | null) => void;
   setSelectedTool: (tool: AnnotationTool) => void;
   setSelectedColor: (color: string) => void;
+  setMultiSelectedIds: (ids: string[]) => void;
   setSelectedSize: (size: number) => void;
   setHighlightOptions: (options: Partial<HighlightOptions>) => void;
   setRectangleRadius: (radius: number) => void;
@@ -71,6 +73,7 @@ const initialState: EditorState = {
   annotations: [],
   selectedTool: 'crop', // Default to crop tool after screenshot
   selectedAnnotationId: null,
+  multiSelectedIds: [],
   selectedImageId: null,
   selectedColor: '#ff0000',
   selectedSize: 2, // Default stroke width / font size multiplier
@@ -83,6 +86,48 @@ const initialState: EditorState = {
     { images: [], annotations: [], frame: emptyFrame, frameMode: 'auto', background: DEFAULT_BACKGROUND, imageGap: IMAGE_GAP },
   ],
   historyStep: 0,
+};
+
+// The fields that carry an annotation's colour, set to color; null when the
+// annotation has no colour or already has this one.
+const colorUpdates = (ann: Annotation, color: string): Partial<Annotation> | null => {
+  switch (ann.type) {
+    case 'rectangle':
+    case 'arrow':
+    case 'arrow-text':
+      return ann.stroke === color ? null : { stroke: color };
+    case 'numbered-arrow':
+      return ann.stroke === color && ann.fill === color ? null : { stroke: color, fill: color };
+    case 'text':
+      return ann.fill === color ? null : { fill: color };
+    default:
+      return null;
+  }
+};
+
+// The fields that carry an annotation's size for Size step size, in doc px
+// through the annotation's creation unit; null when it has no size or already
+// has this one. A text box grows or shrinks with its font so the text keeps
+// fitting.
+const sizeUpdates = (ann: Annotation, size: number): Partial<Annotation> | null => {
+  const unit = ann.unit ?? 1;
+  switch (ann.type) {
+    case 'rectangle':
+    case 'arrow':
+    case 'arrow-text':
+    case 'numbered-arrow': {
+      const strokeWidth = strokeForSize(size) * unit;
+      return ann.strokeWidth === strokeWidth ? null : { strokeWidth };
+    }
+    case 'text': {
+      const fontSize = fontForSize(size) * unit;
+      const old = ann.fontSize || 16 * unit;
+      if (old === fontSize) return null;
+      return ann.height ? { fontSize, height: (ann.height * fontSize) / old } : { fontSize };
+    }
+    default:
+      return null;
+  }
 };
 
 // True once at least one image is in the document.
@@ -99,6 +144,9 @@ let documentEpoch = 0;
 // recorded since: further background changes edit that step instead of adding
 // one per color-picker movement.
 let backgroundStep = -1;
+// Same for colour and size edits of the selection: dragging the colour picker
+// or the Size slider is one undo step. Reset when the selection changes.
+let styleStep: { kind: string; step: number } | null = null;
 
 const snapshotOf = (
   state: Pick<EditorState, 'images' | 'annotations' | 'frame' | 'frameMode' | 'background' | 'imageGap'>,
@@ -127,9 +175,38 @@ const decodeImage = (base64: string): Promise<{ width: number; height: number }>
   });
 
 export const useEditorStore = create<EditorStore>((set, get) => {
+  // Applies updates (null = leave as is) to every selected annotation as one
+  // undo step. Repeated edits of the same kind on the same selection (a
+  // slider or colour-picker drag) stay in that step.
+  const editSelection = (kind: string, updatesFor: (ann: Annotation) => Partial<Annotation> | null) => {
+    const { annotations, selectedAnnotationId, multiSelectedIds } = get();
+    const ids = new Set(multiSelectedIds);
+    if (selectedAnnotationId) ids.add(selectedAnnotationId);
+    if (ids.size === 0) return;
+    let changed = false;
+    const next = annotations.map((ann) => {
+      if (!ids.has(ann.id)) return ann;
+      const updates = updatesFor(ann);
+      if (!updates) return ann;
+      changed = true;
+      return { ...ann, ...updates };
+    });
+    if (!changed) return;
+    const state = get();
+    if (styleStep && styleStep.kind === kind && styleStep.step === state.historyStep && styleStep.step === state.history.length - 1) {
+      const history = state.history.slice();
+      history[styleStep.step] = { ...history[styleStep.step], annotations: next };
+      set({ annotations: next, history });
+      return;
+    }
+    pushHistory({ annotations: next });
+    styleStep = { kind, step: get().historyStep };
+  };
+
   // Records the current document as a new undo step, dropping any redo tail.
   const pushHistory = (next: Partial<EditorState>) => {
     backgroundStep = -1;
+    styleStep = null;
     const state = get();
     const merged = { ...snapshotOf(state), ...next };
     const history = state.history.slice(0, state.historyStep + 1);
@@ -164,6 +241,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
   const restore = (step: number) => {
     backgroundStep = -1;
+    styleStep = null;
     const snap = get().history[step];
     const { selectedImageId, pendingCrop } = get();
     set({
@@ -199,6 +277,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
       documentEpoch++;
       backgroundStep = -1;
+      styleStep = null;
       const canvasImage: CanvasImage = {
         id: `image-${++imageSeq}`,
         src: image,
@@ -219,6 +298,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         lastArrangeMode: null,
         annotations: [],
         selectedAnnotationId: null,
+        multiSelectedIds: [],
         selectedImageId: null,
         selectedTool: tool,
         cropRegion: null,
@@ -385,12 +465,24 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       }));
     },
 
+    // Sets the colour for new annotations and recolours the selected ones.
+    // Highlight and blur have no colour.
     setSelectedColor: (color: string) => {
       set({ selectedColor: color });
+      editSelection('color', (ann) => colorUpdates(ann, color));
     },
 
+    setMultiSelectedIds: (ids: string[]) => {
+      styleStep = null;
+      set({ multiSelectedIds: ids });
+    },
+
+    // Sets the size for new annotations and resizes the selected ones: the
+    // stroke of shapes and arrows, the font of text. Highlight and blur have
+    // no size.
     setSelectedSize: (size: number) => {
       set({ selectedSize: size });
+      editSelection('size', (ann) => sizeUpdates(ann, size));
     },
 
     setHighlightOptions: (options: Partial<HighlightOptions>) => {
@@ -527,11 +619,13 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
 
     setSelectedAnnotation: (id: string | null) => {
+      styleStep = null;
       set(id ? { selectedAnnotationId: id, selectedImageId: null } : { selectedAnnotationId: null });
     },
 
     clearAnnotations: () => {
       backgroundStep = -1;
+      styleStep = null;
       const state = get();
       set({
         annotations: [],
@@ -553,6 +647,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     reset: () => {
       documentEpoch++;
       backgroundStep = -1;
+      styleStep = null;
       set({ ...initialState });
     },
   };

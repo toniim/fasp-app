@@ -10,6 +10,7 @@ import { GetVersion, ReadClipboardImage, ReadImageFile } from '../../../wailsjs/
 import { OnFileDrop, OnFileDropOff } from '../../../wailsjs/runtime/runtime';
 import { IMAGE_GAP, fitScale, viewportSize, clampPosition, keepInView, canPan, alignToDevicePixels } from '../../utils/editor-geometry';
 import { backdropLayout, backdropPreset, paintBackdrop, useBackdropPhoto } from '../../utils/backdrops';
+import { fontForSize, strokeForSize } from '../../utils/annotation-sizes';
 import './EditorWindow.css';
 
 // Node name of everything that counts as empty canvas for the marquee: the
@@ -155,7 +156,9 @@ const EditorWindow: React.FC = () => {
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   // Marquee (rubber-band) multi-selection with the select tool.
   const [selectionRect, setSelectionRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [marqueeSelectedIds, setMarqueeSelectedIds] = useState<string[]>([]);
+  // In the store, so the toolbar's colours can recolour the whole selection.
+  const marqueeSelectedIds = useEditorStore((s) => s.multiSelectedIds);
+  const setMarqueeSelectedIds = useEditorStore((s) => s.setMultiSelectedIds);
 
   const stageRef = useRef<any>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
@@ -896,8 +899,8 @@ const EditorWindow: React.FC = () => {
     // Calculate actual size based on selectedSize. The presets are screen
     // sizes; dividing by scaleRatio (times px) turns them into doc px so they
     // look the same on screen as before.
-    const strokeWidth = (selectedSize === 1 ? 1 : selectedSize === 2 ? 2 : selectedSize === 3 ? 4 : selectedSize === 4 ? 6 : 8) * px;
-    const fontSize = (selectedSize === 1 ? 12 : selectedSize === 2 ? 16 : selectedSize === 3 ? 20 : selectedSize === 4 ? 24 : 32) * px;
+    const strokeWidth = strokeForSize(selectedSize) * px;
+    const fontSize = fontForSize(selectedSize) * px;
 
     switch (selectedTool) {
       case 'rectangle':
@@ -1484,8 +1487,8 @@ const EditorWindow: React.FC = () => {
             width={ann.width}
             height={ann.height}
             rotation={ann.rotation || 0}
-            stroke={isSelected ? '#007bff' : ann.stroke}
-            strokeWidth={isSelected ? 3 * px : ann.strokeWidth}
+            stroke={ann.stroke}
+            strokeWidth={ann.strokeWidth}
             // Transparent fill makes the whole interior a selectable/draggable
             // area, and a wide hit-stroke makes the border easy to grab.
             fill={ann.fill || 'transparent'}
@@ -1628,17 +1631,17 @@ const EditorWindow: React.FC = () => {
             >
               <Line
                 points={curvedPoints}
-                stroke={isSelected ? '#007bff' : ann.stroke}
-                strokeWidth={isSelected ? 3 * px : ann.strokeWidth}
+                stroke={ann.stroke}
+                strokeWidth={ann.strokeWidth}
                 hitStrokeWidth={20 * px}
                 lineCap="round"
                 lineJoin="round"
               />
               <Line
                 points={[arrowPoint1X, arrowPoint1Y, arrowEndX, arrowEndY, arrowPoint2X, arrowPoint2Y]}
-                stroke={isSelected ? '#007bff' : ann.stroke}
-                strokeWidth={isSelected ? 3 * px : ann.strokeWidth}
-                fill={isSelected ? '#007bff' : ann.stroke}
+                stroke={ann.stroke}
+                strokeWidth={ann.strokeWidth}
+                fill={ann.stroke}
                 closed={true}
               />
               {/* Control point - only show when selected */}
@@ -1704,9 +1707,9 @@ const EditorWindow: React.FC = () => {
           >
             <Arrow
               points={ann.points || []}
-              stroke={isSelected ? '#007bff' : ann.stroke}
-              strokeWidth={isSelected ? 3 * px : ann.strokeWidth}
-              fill={isSelected ? '#007bff' : ann.stroke}
+              stroke={ann.stroke}
+              strokeWidth={ann.strokeWidth}
+              fill={ann.stroke}
               pointerLength={10 * u}
               pointerWidth={10 * u}
               hitStrokeWidth={20 * px}
@@ -1718,7 +1721,7 @@ const EditorWindow: React.FC = () => {
                 y={atLabel.y}
                 text={ann.text}
                 fontSize={atFontSize}
-                fill={isSelected ? '#007bff' : ann.stroke}
+                fill={ann.stroke}
               />
             )}
             {!isEditingLabel && isSelected && !ann.text && (
@@ -1753,9 +1756,9 @@ const EditorWindow: React.FC = () => {
           >
             <Arrow
               points={ann.points || []}
-              stroke={isSelected ? '#007bff' : ann.stroke}
-              strokeWidth={isSelected ? 3 * px : ann.strokeWidth}
-              fill={isSelected ? '#007bff' : ann.stroke}
+              stroke={ann.stroke}
+              strokeWidth={ann.strokeWidth}
+              fill={ann.stroke}
               pointerLength={10 * u}
               pointerWidth={10 * u}
               hitStrokeWidth={20 * px}
@@ -1764,8 +1767,8 @@ const EditorWindow: React.FC = () => {
               x={endX}
               y={endY}
               radius={circleRadius}
-              fill={isSelected ? '#007bff' : ann.fill}
-              stroke={isSelected ? '#007bff' : ann.stroke}
+              fill={ann.fill}
+              stroke={ann.stroke}
               strokeWidth={2 * u}
             />
             <Text
@@ -1817,7 +1820,7 @@ const EditorWindow: React.FC = () => {
                 text={ann.text || ''}
                 fontSize={ann.fontSize || 16 * u}
                 rotation={ann.rotation || 0}
-                fill={isSelected ? '#007bff' : ann.fill}
+                fill={ann.fill}
                 draggable={isDraggable}
                 onClick={selectOnClick}
                 onDblClick={() => {
@@ -2085,6 +2088,28 @@ const EditorWindow: React.FC = () => {
                 listening={false}
               />
             )}
+            {/* Several annotations selected together: a dashed box around each,
+                since they keep their own colours. */}
+            {marqueeSelectedIds.map((id) => {
+              const node = shapeRefs.current[id];
+              const layer = node?.getLayer();
+              if (!node || !layer || !annotations.some((a) => a.id === id)) return null;
+              const box = node.getClientRect({ relativeTo: layer });
+              const pad = 4 * px;
+              return (
+                <Rect
+                  key={`multi-${id}`}
+                  x={box.x - pad}
+                  y={box.y - pad}
+                  width={box.width + pad * 2}
+                  height={box.height + pad * 2}
+                  stroke="#007bff"
+                  strokeWidth={1.5 * px}
+                  dash={[6 * px, 4 * px]}
+                  listening={false}
+                />
+              );
+            })}
             {/* Hover bounding box: shows the selectable rectangular area when
                 hovering an annotation that isn't the currently selected one. */}
             {hoveredAnnotationId && hoveredAnnotationId !== selectedAnnotationId && (() => {
