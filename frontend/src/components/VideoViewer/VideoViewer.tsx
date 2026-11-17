@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CopyFileToClipboard, OpenPath, RevealPath, SaveVideoAs } from '../../../bindings/github.com/heytonyne/fasp/app';
+import { CopyFileToClipboard, OpenPath, RevealPath, SaveTrimmed, SaveVideoAs } from '../../../bindings/github.com/heytonyne/fasp/app';
 import { UploadButton } from '../EditorWindow/UploadButton';
+import TrimBar from './TrimBar';
+import MediaJobDialog from './MediaJobDialog';
 import Toast from '../Toast/Toast';
 import { formatDuration } from '../Recording/RecordingBar';
 import '../EditorWindow/EditorWindow.css';
@@ -39,6 +41,21 @@ const Icons = {
       <path d="M9 2V6H13" />
     </svg>
   ),
+  trim: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 2V14" />
+      <path d="M11 2V14" />
+      <path d="M5 8H11" />
+    </svg>
+  ),
+  gif: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M6 6.5H5C4.5 6.5 4.5 9.5 5 9.5H6V8.5H5.2" />
+      <path d="M8 6.5V9.5" />
+      <path d="M12 6.5H10V9.5M10 8H11.5" />
+    </svg>
+  ),
   folder: (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 4.5C2 3.67 2.67 3 3.5 3H6L7.5 4.5H12.5C13.33 4.5 14 5.17 14 6V11.5C14 12.33 13.33 13 12.5 13H3.5C2.67 13 2 12.33 2 11.5V4.5Z" />
@@ -67,13 +84,37 @@ const VideoViewer: React.FC<VideoViewerProps> = ({ video, onClose }) => {
   const [meta, setMeta] = useState<{ w: number; h: number; seconds: number } | null>(null);
   const [failed, setFailed] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  // The part of the video to trim or export as a GIF, and where the playhead is.
+  const [range, setRange] = useState<{ start: number; end: number } | null>(null);
+  const [playhead, setPlayhead] = useState(0);
+  // The job dialog that is open, if any. A trim already has its job id: the
+  // save dialog came first.
+  const [job, setJob] = useState<{ kind: 'gif' | 'trim'; id?: string } | null>(null);
   const name = video.path.split(/[\\/]/).pop() || video.path;
   const folder = video.path.slice(0, video.path.length - name.length - 1);
 
   useEffect(() => {
     setMeta(null);
     setFailed(false);
+    setRange(null);
+    setPlayhead(0);
+    setJob(null);
   }, [video.url]);
+
+  const seek = useCallback((seconds: number) => {
+    if (videoRef.current) videoRef.current.currentTime = seconds;
+  }, []);
+
+  // Save Trimmed: the destination is asked first, then Go trims in the background.
+  const saveTrimmed = useCallback(async () => {
+    if (!range) return;
+    try {
+      const id = await SaveTrimmed(video.path, Math.round(range.start * 1000), Math.round(range.end * 1000));
+      if (id) setJob({ kind: 'trim', id });
+    } catch (err) {
+      setToast({ message: `Trim failed: ${err}`, type: 'error' });
+    }
+  }, [range, video.path]);
 
   const copy = useCallback(async () => {
     try {
@@ -103,7 +144,7 @@ const VideoViewer: React.FC<VideoViewerProps> = ({ video, onClose }) => {
   // player keys that work without focusing the video first.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (document.querySelector('.settings-window')) return; // a dialog is open
+      if (document.querySelector('.settings-window, .job-dialog')) return; // a dialog is open
       const mod = e.ctrlKey || e.metaKey;
       const v = videoRef.current;
       if (e.key === 'Escape') {
@@ -174,11 +215,24 @@ const VideoViewer: React.FC<VideoViewerProps> = ({ video, onClose }) => {
             onLoadedMetadata={(e) => {
               const v = e.currentTarget;
               setMeta({ w: v.videoWidth, h: v.videoHeight, seconds: v.duration });
+              if (Number.isFinite(v.duration) && v.duration > 0) setRange({ start: 0, end: v.duration });
             }}
+            onTimeUpdate={(e) => setPlayhead(e.currentTarget.currentTime)}
             onError={() => setFailed(true)}
           />
         )}
       </div>
+
+      {range && meta && !failed && (
+        <TrimBar
+          duration={meta.seconds}
+          start={range.start}
+          end={range.end}
+          current={playhead}
+          onChange={(start, end) => setRange({ start, end })}
+          onSeek={seek}
+        />
+      )}
 
       <div className="action-bar">
         <button className="primary-button" onClick={copy} title={`Copy the video file (${modKey}+C)`}>
@@ -193,6 +247,24 @@ const VideoViewer: React.FC<VideoViewerProps> = ({ video, onClose }) => {
           {Icons.folder}
           <span>Show in Folder</span>
         </button>
+        <button
+          className="secondary-button"
+          onClick={saveTrimmed}
+          disabled={!range || !meta || (range.start <= 0 && range.end >= meta.seconds)}
+          title="Save the part between the two handles as a new MP4 (move a handle first)"
+        >
+          {Icons.trim}
+          <span>Save Trimmed…</span>
+        </button>
+        <button
+          className="secondary-button"
+          onClick={() => setJob({ kind: 'gif' })}
+          disabled={!range || !meta}
+          title="Make a GIF of the part between the two handles"
+        >
+          {Icons.gif}
+          <span>Export GIF…</span>
+        </button>
         <UploadButton
           getFile={getFile}
           hasImage
@@ -205,6 +277,19 @@ const VideoViewer: React.FC<VideoViewerProps> = ({ video, onClose }) => {
           onError={(err) => setToast({ message: `Upload failed: ${err}`, type: 'error' })}
         />
       </div>
+
+      {job && range && meta && (
+        <MediaJobDialog
+          kind={job.kind}
+          jobId={job.id}
+          video={video}
+          start={range.start}
+          end={range.end}
+          duration={meta.seconds}
+          onNotify={(message, type) => setToast({ message, type })}
+          onClose={() => setJob(null)}
+        />
+      )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>

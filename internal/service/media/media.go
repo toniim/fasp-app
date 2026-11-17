@@ -5,6 +5,7 @@ package media
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -71,6 +72,12 @@ func Trim(in, out string, start, end time.Duration) error {
 // ExportGIF writes a looping GIF. progress, when set, is called after each
 // frame with the frames done and the frames in total.
 func ExportGIF(in, out string, opt GIFOptions, progress func(done, total int)) error {
+	return ExportGIFContext(context.Background(), in, out, opt, progress)
+}
+
+// ExportGIFContext is ExportGIF that stops when ctx is cancelled: it checks
+// before every frame, returns ctx.Err() and leaves nothing at out.
+func ExportGIFContext(ctx context.Context, in, out string, opt GIFOptions, progress func(done, total int)) error {
 	p, err := planGIF(in, opt)
 	if err != nil {
 		return err
@@ -95,6 +102,9 @@ func ExportGIF(in, out string, opt GIFOptions, progress func(done, total int)) e
 			return err
 		}
 		err = decodeFrames(in, p.start, p.count, float64(p.fps), p.w, p.h, func(i int, bgra []byte) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if _, err := enc.addFrame(bgra); err != nil {
 				return err
 			}

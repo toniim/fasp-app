@@ -76,3 +76,179 @@
   color: var(--color-text-tertiary);
   font-size: 14px;
 }
+
+/* Trim range under the video */
+.trim-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px 4px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+}
+
+.trim-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.trim-track {
+  position: relative;
+  flex: 1;
+  height: 28px;
+  margin: 0 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+}
+
+.trim-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 122, 255, 0.45);
+  border-top: 2px solid var(--color-accent);
+  border-bottom: 2px solid var(--color-accent);
+  pointer-events: none;
+}
+
+.trim-playhead {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  pointer-events: none;
+}
+
+.trim-handle {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 12px;
+  margin-left: -6px;
+  border-radius: 3px;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.trim-handle:focus-visible {
+  outline: 2px solid #fff;
+}
+
+.trim-controls {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.trim-times {
+  display: inline-flex;
+  gap: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trim-set {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* Trim / GIF job dialog */
+.job-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 999;
+}
+
+.job-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 420px;
+  padding: 20px;
+  box-sizing: border-box;
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-dark-secondary);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  text-align: left;
+  z-index: 1000;
+}
+
+.job-dialog h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.job-range,
+.job-estimate {
+  margin: 8px 0;
+  color: rgba(255, 255, 255, 0.65);
+  font-variant-numeric: tabular-nums;
+}
+
+.job-error {
+  margin: 12px 0;
+  color: var(--color-danger);
+}
+
+.job-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0;
+}
+
+.job-row select {
+  min-width: 200px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+}
+
+.job-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.job-actions-wrap {
+  flex-wrap: wrap;
+}
+
+.job-progress {
+  position: relative;
+  height: 8px;
+  margin: 16px 0 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.job-progress-bar {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.12s linear;
+}
+
+.job-progress.indeterminate .job-progress-bar {
+  width: 35%;
+  animation: job-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes job-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
