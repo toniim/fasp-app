@@ -155,6 +155,9 @@ export interface BackdropSettings {
   padding: number; // margin, % of the shot's longer side
   radius: number; // corner radius of the shot (px of a 1200 px shot)
   shadow: boolean;
+  border: boolean;
+  borderWidth: number; // stroke width of the shot border (px of a 1200 px shot)
+  borderColor: string; // #rrggbb hex
   // The user's own background image as a data URL, used when presetId is
   // 'custom'. Kept for the session only.
   customImage?: string;

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import { BACKDROP_RATIOS, COLOR_BACKDROPS, CUSTOM_BACKDROP_ID, BackdropPreset, paintBackdrop } from '../../utils/backdrops';
+import { BACKDROP_RATIOS, BORDER_COLORS, COLOR_BACKDROPS, CUSTOM_BACKDROP_ID, BackdropPreset, paintBackdrop } from '../../utils/backdrops';
 import { PHOTO_BACKDROPS } from '../../utils/backdrop-photos';
 import { OpenImageDialog, ReadImageFile } from '../../../bindings/github.com/heytonyne/fasp/app';
 
@@ -172,6 +172,57 @@ const BackdropPanel: React.FC<BackdropPanelProps> = ({ onClose }) => {
         />
         <span>Shadow</span>
       </label>
+      <label className="backdrop-row">
+        <input
+          type="checkbox"
+          checked={backdrop.border}
+          onChange={(e) => setBackdrop({ border: e.target.checked, enabled: true })}
+        />
+        <span>Border</span>
+      </label>
+      {backdrop.border && (
+        <>
+          <div className="backdrop-row">
+            <span className="size-label">Color</span>
+            <div className="backdrop-border-colors" role="group" aria-label="Border color">
+              {BORDER_COLORS.map(({ color, name }) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`backdrop-border-swatch ${backdrop.borderColor.toLowerCase() === color ? 'active' : ''}`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => setBackdrop({ borderColor: color, enabled: true })}
+                  title={name}
+                  aria-label={name}
+                  aria-pressed={backdrop.borderColor.toLowerCase() === color}
+                />
+              ))}
+              <input
+                type="color"
+                className="backdrop-border-color-input"
+                value={backdrop.borderColor}
+                onChange={(e) => setBackdrop({ borderColor: e.target.value, enabled: true })}
+                title="Custom border color"
+                aria-label="Custom border color"
+              />
+            </div>
+          </div>
+          <div className="backdrop-row">
+            <label className="size-label" htmlFor="backdrop-border-width">Width</label>
+            <input
+              id="backdrop-border-width"
+              type="range"
+              min="1"
+              max="12"
+              step="1"
+              value={backdrop.borderWidth}
+              onChange={(e) => setBackdrop({ borderWidth: Number(e.target.value), enabled: true })}
+              className="size-slider"
+            />
+            <span className="size-value">{`${backdrop.borderWidth}px`}</span>
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -2249,6 +2249,26 @@ const EditorWindow: React.FC = () => {
               );
             })()}
           </Layer>
+          {/* Shot border: drawn above the clipped content layer (unclipped) so
+              rounded corners keep the full stroke width with no anti-aliasing
+              seam. Included in stage.toDataURL exports (not editor-chrome). */}
+          {backdropBox && backdropBox.borderWidth > 0 && (
+            <Layer offsetX={viewFrame.x} offsetY={viewFrame.y} listening={false}>
+              <Shape
+                listening={false}
+                sceneFunc={(ctx) => {
+                  const c = ctx._context;
+                  c.save();
+                  c.beginPath();
+                  c.roundRect(frame.x, frame.y, frame.width, frame.height, backdropBox.radius);
+                  c.strokeStyle = backdrop.borderColor;
+                  c.lineWidth = backdropBox.borderWidth;
+                  c.stroke();
+                  c.restore();
+                }}
+              />
+            </Layer>
+          )}
           {/* Editor chrome that must not be clipped by the frame: transformer
               handles and the hover box of an annotation at the frame edge reach
               outside it. Same offset as the document layer, so both share doc px.

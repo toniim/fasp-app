@@ -50,6 +50,9 @@ export function sanitizePrefs(raw: unknown): Partial<PrefsSource> {
     next.padding = num(b.padding, 2, 20) ?? next.padding;
     next.radius = num(b.radius, 0, 40) ?? next.radius;
     if (typeof b.shadow === 'boolean') next.shadow = b.shadow;
+    if (typeof b.border === 'boolean') next.border = b.border;
+    next.borderWidth = num(b.borderWidth, 1, 12) ?? next.borderWidth;
+    if (typeof b.borderColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(b.borderColor)) next.borderColor = b.borderColor;
     out.backdrop = next;
   }
   if (isObject(raw.highlight)) {

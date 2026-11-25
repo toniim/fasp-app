@@ -399,6 +399,43 @@
   font-size: 11px;
 }
 
+.backdrop-border-colors {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.backdrop-border-swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  transition: all var(--transition-fast);
+}
+
+.backdrop-border-swatch:hover {
+  transform: scale(1.12);
+}
+
+.backdrop-border-swatch.active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px rgba(0, 122, 255, 0.4);
+}
+
+.backdrop-border-color-input {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
 /* =============================================================================
    Editor Canvas Area
    ============================================================================= */

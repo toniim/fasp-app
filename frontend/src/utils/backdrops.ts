@@ -80,6 +80,16 @@ export const BACKDROP_PRESETS: BackdropPreset[] = [...PHOTO_BACKDROPS, ...COLOR_
 
 export const BACKDROP_RATIOS: BackdropRatio[] = ['auto', '16:9', '1:1', '4:5', '3:2'];
 
+export const BORDER_COLORS: { color: string; name: string }[] = [
+  { color: '#f97316', name: 'Orange' },
+  { color: '#ffffff', name: 'White' },
+  { color: '#18181b', name: 'Black' },
+  { color: '#3b82f6', name: 'Blue' },
+  { color: '#ef4444', name: 'Red' },
+  { color: '#22c55e', name: 'Green' },
+  { color: '#8b5cf6', name: 'Purple' },
+];
+
 // Width / height of a ratio preset; null for auto.
 const ratioValue = (ratio: BackdropRatio): number | null => {
   if (ratio === 'auto') return null;
@@ -94,6 +104,9 @@ export const DEFAULT_BACKDROP: BackdropSettings = {
   padding: 8,
   radius: 12,
   shadow: true,
+  border: false,
+  borderWidth: 3,
+  borderColor: '#f97316',
 };
 
 // The preset the settings select: the user's own image, a shipped one, or the
@@ -196,6 +209,8 @@ export interface BackdropLayout {
   radius: number;
   shadowBlur: number;
   shadowOffset: number;
+  // Stroke width of the shot border, in doc px (0 when border is off).
+  borderWidth: number;
 }
 
 // Sizes scale with the shot, so a Retina capture and a small one look alike:
@@ -221,5 +236,6 @@ export function backdropLayout(frame: Frame, s: BackdropSettings): BackdropLayou
     radius: Math.min(s.radius * unit, Math.min(frame.width, frame.height) / 2),
     shadowBlur: 40 * unit,
     shadowOffset: 14 * unit,
+    borderWidth: s.border ? s.borderWidth * unit : 0,
   };
 }
